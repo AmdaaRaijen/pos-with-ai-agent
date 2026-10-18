@@ -1,0 +1,263 @@
+<script lang="ts">
+	import { enhance } from '$app/forms';
+	import { emoneyFee, rp, shortRp } from '#lib/money.ts';
+	import { toast } from '#lib/toast.svelte.ts';
+	import { label, type Product } from '#lib/types.ts';
+	import Sheet from '#lib/components/Sheet.svelte';
+	import MoneyInput from '#lib/components/MoneyInput.svelte';
+	import Plus from 'phosphor-svelte/lib/Plus';
+	import Package from 'phosphor-svelte/lib/Package';
+	import Wallet from 'phosphor-svelte/lib/Wallet';
+	import CaretRight from 'phosphor-svelte/lib/CaretRight';
+	import MagnifyingGlass from 'phosphor-svelte/lib/MagnifyingGlass';
+	import type { PageProps } from './$types';
+
+	let { data }: PageProps = $props();
+
+	let q = $state('');
+	let open = $state(false);
+	let saving = $state(false);
+	let confirmDelete = $state(false);
+
+	// Isi form
+	let editing = $state<Product | null>(null);
+	let kind = $state<'barang' | 'emoney'>('barang');
+	let name = $state('');
+	let variant = $state('');
+	const variantChips = ['Es', 'Hangat', 'Kecil', 'Besar'];
+	let buy = $state(0);
+	let profit = $state(0);
+	let sell = $state(0);
+	let stock = $state('');
+
+	const list = $derived(data.products.filter((p) => label(p).toLowerCase().includes(q.trim().toLowerCase())));
+	const emoneyItems = $derived(list.filter((p) => p.kind === 'emoney'));
+	const goods = $derived(list.filter((p) => p.kind === 'barang'));
+	const percent = $derived(sell > 0 && sell >= buy ? Math.round(((sell - buy) / sell) * 100) : 0);
+	const ruleFee = (n: number) => emoneyFee(n, data.emoney).fee;
+
+	function openForm(p: Product | null, k: 'barang' | 'emoney' = 'barang') {
+		editing = p;
+		kind = p?.kind ?? k;
+		name = p?.name ?? '';
+		variant = p?.variant ?? '';
+		buy = p?.buy_price ?? 0;
+		sell = p?.sell_price ?? 0;
+		profit = Math.max(0, sell - buy);
+		stock = p ? String(p.stock) : '';
+		confirmDelete = false;
+		open = true;
+	}
+
+	const recalcSell = () => (sell = buy + profit);
+	const recalcProfit = () => (profit = Math.max(0, sell - buy));
+</script>
+
+<header class="rise mb-5 flex items-end justify-between gap-3">
+	<div>
+		<h1 class="text-2xl font-semibold tracking-tight">Stok barang</h1>
+		<p class="mt-1 text-sm text-zinc-500">{goods.length} barang{emoneyItems.length ? `, ${emoneyItems.length} saldo e-money` : ''}</p>
+	</div>
+	<button class="btn-primary !min-h-12 !px-4" onclick={() => openForm(null)}><Plus size={20} weight="bold" /> Tambah</button>
+</header>
+
+<div class="rise relative mb-5" style="--i:1">
+	<MagnifyingGlass size={20} class="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-zinc-400" />
+	<input class="field pl-11" type="search" placeholder="Cari barang" aria-label="Cari barang" bind:value={q} />
+</div>
+
+{#if data.products.length === 0}
+	<section class="rise rounded-[2rem] border border-dashed border-zinc-300 px-6 py-12 text-center" style="--i:2">
+		<Package size={44} class="mx-auto text-zinc-400" />
+		<h2 class="mt-4 text-lg font-semibold">Stok masih kosong</h2>
+		<p class="mx-auto mt-1 max-w-[30ch] text-sm text-zinc-500">Tambah barang pertama. Isi nama, harga beli, dan untung yang diinginkan.</p>
+		<button class="btn-primary mt-6" onclick={() => openForm(null)}>Tambah barang</button>
+	</section>
+{:else}
+	{#if emoneyItems.length > 0}
+		<section class="rise mb-6" style="--i:2">
+			<h2 class="mb-2 px-1 text-sm font-semibold text-zinc-600">Saldo e-money</h2>
+			<ul class="space-y-3">
+				{#each emoneyItems as p (p.id)}
+					<li>
+						<button class="press flex w-full items-center gap-3 rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-left" onclick={() => openForm(p)}>
+							<Wallet size={26} weight="duotone" class="shrink-0 text-emerald-700" />
+							<span class="min-w-0 flex-1">
+								<span class="block text-base font-semibold">{p.name}</span>
+								<span class="block text-sm text-emerald-900">200rb: {shortRp(ruleFee(200_000))}, 220rb: {shortRp(ruleFee(220_000))}</span>
+							</span>
+							<CaretRight size={18} class="text-emerald-700/60" />
+						</button>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
+
+	{#if goods.length > 0}
+		<section class="rise" style="--i:3">
+			<h2 class="mb-2 px-1 text-sm font-semibold text-zinc-600">Barang</h2>
+			<ul class="divide-y divide-zinc-100 overflow-hidden rounded-3xl border border-zinc-200/70 bg-white shadow-lift">
+				{#each goods as p (p.id)}
+					<li>
+						<button class="press flex min-h-18 w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-zinc-50" onclick={() => openForm(p)}>
+							<span class="min-w-0 flex-1">
+								<span class="block truncate text-base font-semibold">{label(p)}</span>
+								<span class="block text-sm text-zinc-500"><span class="whitespace-nowrap">Beli {rp(p.buy_price)}</span> <span class="whitespace-nowrap">untung {rp(p.sell_price - p.buy_price)}</span></span>
+							</span>
+							<span class="text-right">
+								<span class="block text-base font-semibold">{rp(p.sell_price)}</span>
+								<span class="block text-sm font-medium {p.stock <= 0 ? 'text-rose-600' : p.stock <= 3 ? 'text-amber-700' : 'text-zinc-500'}">
+									{p.stock <= 0 ? 'Habis' : `Sisa ${p.stock}`}
+								</span>
+							</span>
+							<CaretRight size={18} class="text-zinc-300" />
+						</button>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
+
+	{#if list.length === 0}
+		<p class="py-12 text-center text-zinc-500">Tidak ada barang bernama "{q}".</p>
+	{/if}
+
+	{#if !data.products.some((p) => p.kind === 'emoney') && !q}
+		<button class="press mt-6 flex w-full items-center gap-3 rounded-3xl border border-dashed border-emerald-300 px-4 py-4 text-left text-emerald-800" onclick={() => openForm(null, 'emoney')}>
+			<Wallet size={24} weight="duotone" />
+			<span class="text-base font-medium">Jual saldo e-money? Tambah di sini</span>
+		</button>
+	{/if}
+{/if}
+
+<Sheet bind:open title={editing ? 'Ubah ' + (kind === 'emoney' ? 'saldo' : 'barang') : 'Tambah'}>
+	<form
+		method="POST"
+		action="?/save"
+		class="flex flex-col gap-5"
+		use:enhance={() => {
+			saving = true;
+			return async ({ result, update }) => {
+				saving = false;
+				if (result.type === 'success') {
+					open = false;
+					toast('Tersimpan');
+					await update();
+				} else if (result.type === 'failure') {
+					toast(String(result.data?.error ?? 'Gagal menyimpan'), 'error');
+				} else {
+					toast('Gagal menyimpan. Cek sambungan internet.', 'error');
+				}
+			};
+		}}
+	>
+		<input type="hidden" name="id" value={editing?.id ?? ''} />
+		<input type="hidden" name="kind" value={kind} />
+		<input type="hidden" name="buy_price" value={buy} />
+		<input type="hidden" name="sell_price" value={sell} />
+
+		{#if !editing}
+			<div class="grid grid-cols-2 gap-1 rounded-2xl bg-zinc-100 p-1 text-sm font-semibold" role="tablist">
+				<button type="button" role="tab" aria-selected={kind === 'barang'} class="press rounded-xl py-2.5 {kind === 'barang' ? 'bg-white shadow-sm' : 'text-zinc-500'}" onclick={() => (kind = 'barang')}>Barang</button>
+				<button type="button" role="tab" aria-selected={kind === 'emoney'} class="press rounded-xl py-2.5 {kind === 'emoney' ? 'bg-white shadow-sm' : 'text-zinc-500'}" onclick={() => (kind = 'emoney')}>Saldo e-money</button>
+			</div>
+		{/if}
+
+		<div>
+			<label class="label" for="name">{kind === 'emoney' ? 'Nama e-money' : 'Nama barang'}</label>
+			<input class="field" id="name" name="name" maxlength="60" placeholder={kind === 'emoney' ? 'Contoh: DANA' : 'Contoh: Kopi'} bind:value={name} required />
+		</div>
+
+		{#if kind === 'barang'}
+			<div>
+				<label class="label" for="variant">Varian (boleh kosong)</label>
+				<input class="field" id="variant" name="variant" maxlength="30" placeholder="Contoh: Es" bind:value={variant} />
+				<div class="mt-2 flex flex-wrap gap-2">
+					{#each variantChips as c (c)}
+						<button type="button" class="press min-h-10 rounded-xl px-3.5 text-sm font-semibold {variant === c ? 'bg-emerald-700 text-white' : 'bg-zinc-100 text-zinc-700'}" onclick={() => (variant = variant === c ? '' : c)}>{c}</button>
+					{/each}
+				</div>
+				<p class="mt-2 text-sm text-zinc-500">Pakai kalau harganya beda, misalnya Es dan Hangat. Tiap varian punya harga dan stok sendiri.</p>
+			</div>
+		{/if}
+
+		{#if kind === 'barang'}
+			<div>
+				<label class="label" for="buy">Harga beli (modal)</label>
+				<MoneyInput id="buy" bind:value={buy} onchange={recalcSell} />
+			</div>
+			<div>
+				<label class="label" for="profit">Untung yang diinginkan</label>
+				<MoneyInput id="profit" bind:value={profit} onchange={recalcSell} />
+			</div>
+			<div class="rounded-3xl bg-emerald-50 p-4">
+				<label class="label !text-emerald-900" for="sell">Harga jual</label>
+				<MoneyInput id="sell" bind:value={sell} onchange={recalcProfit} />
+				<p class="mt-2 text-sm text-emerald-900">
+					{#if sell < buy}
+						<span class="font-semibold text-rose-700">Harga jual di bawah modal, rugi {rp(buy - sell)}.</span>
+					{:else}
+						Untung {rp(sell - buy)} per barang{percent ? ` (${percent}% dari harga jual)` : ''}.
+					{/if}
+				</p>
+			</div>
+			<div>
+				<label class="label" for="stock">Stok sekarang</label>
+				<input class="field" id="stock" name="stock" inputmode="numeric" pattern="[0-9]*" placeholder="0" bind:value={stock} />
+			</div>
+		{:else}
+			<div class="rounded-3xl bg-emerald-50 p-4 text-sm text-emerald-900">
+				<p class="font-semibold">Harga jual dihitung otomatis</p>
+				<p class="mt-1">
+					Setiap kelipatan {rp(data.emoney.block)} biayanya {rp(data.emoney.profit + data.emoney.admin)}
+					(untung {rp(data.emoney.profit)} + admin {rp(data.emoney.admin)}).
+				</p>
+				<p class="mt-2">Contoh: {rp(200_000)} biayanya {rp(ruleFee(200_000))}, {rp(220_000)} biayanya {rp(ruleFee(220_000))}.</p>
+			</div>
+		{/if}
+
+		<button class="btn-primary" disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan'}</button>
+	</form>
+
+	{#if editing && editing.kind === 'barang'}
+		<button
+			type="button"
+			class="btn-soft mt-3 w-full"
+			onclick={() => {
+				const base = editing!;
+				openForm(null);
+				name = base.name;
+				buy = base.buy_price;
+				sell = base.sell_price;
+				profit = Math.max(0, sell - buy);
+			}}>Tambah varian lain dari "{editing.name}"</button
+		>
+	{/if}
+
+	{#if editing}
+		<form
+			method="POST"
+			action="?/remove"
+			class="mt-3"
+			use:enhance={() => async ({ result, update }) => {
+				if (result.type === 'success') {
+					open = false;
+					toast('Sudah dihapus');
+					await update();
+				} else toast('Gagal menghapus', 'error');
+			}}
+		>
+			<input type="hidden" name="id" value={editing.id} />
+			{#if confirmDelete}
+				<p class="mb-3 text-center text-sm text-zinc-600">Yakin hapus "{editing.name}"? Riwayat transaksi tetap aman.</p>
+				<div class="grid grid-cols-2 gap-3">
+					<button type="button" class="btn-soft" onclick={() => (confirmDelete = false)}>Batal</button>
+					<button class="btn-danger">Ya, hapus</button>
+				</div>
+			{:else}
+				<button type="button" class="btn-danger w-full" onclick={() => (confirmDelete = true)}>Hapus</button>
+			{/if}
+		</form>
+	{/if}
+</Sheet>

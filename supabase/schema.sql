@@ -1,0 +1,204 @@
+-- Jalankan sekali di Supabase: SQL Editor > New query > paste > Run.
+-- Semua akses lewat server (service role), jadi RLS dinyalakan tanpa policy
+-- supaya tabel tidak bisa dibaca langsung dari browser.
+
+create extension if not exists pgcrypto;
+
+create table if not exists app_users (
+  id uuid primary key default gen_random_uuid(),
+  username text not null unique,
+  password_hash text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists products (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  kind text not null default 'barang' check (kind in ('barang', 'emoney')),
+  buy_price integer not null default 0 check (buy_price >= 0),
+  sell_price integer not null default 0 check (sell_price >= 0),
+  stock integer not null default 0,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+-- Varian (misal Es / Hangat). Boleh dijalankan ulang di database yang sudah ada.
+alter table products add column if not exists variant text;
+create unique index if not exists products_name_variant_uq
+  on products (lower(name), lower(coalesce(variant, ''))) where active;
+
+create table if not exists sales (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  total integer not null default 0,     -- pemasukan toko (biaya admin untuk e-money)
+  profit integer not null default 0,
+  note text,
+  source text not null default 'web'
+);
+create index if not exists sales_created_idx on sales (created_at desc);
+
+create table if not exists sale_items (
+  id uuid primary key default gen_random_uuid(),
+  sale_id uuid not null references sales(id) on delete cascade,
+  product_id uuid references products(id) on delete set null,
+  name text not null,
+  kind text not null default 'barang',
+  qty integer not null check (qty > 0),
+  unit_price integer not null,          -- harga jual per satuan
+  unit_cost integer not null,           -- modal per satuan
+  nominal integer,                      -- khusus e-money: nominal saldo yang dikirim
+  profit integer not null
+);
+create index if not exists sale_items_sale_idx on sale_items (sale_id);
+create index if not exists sale_items_product_idx on sale_items (product_id);
+
+create table if not exists settings (
+  key text primary key,
+  value jsonb not null
+);
+
+insert into settings (key, value) values
+  ('store', '{"name": "Toko Saya"}'),
+  ('emoney', '{"block": 100000, "profit": 3500, "admin": 1500}'),
+  ('telegram_whitelist', '[]')
+on conflict (key) do nothing;
+
+create table if not exists telegram_links (
+  chat_id bigint primary key,
+  phone text not null,
+  name text,
+  history jsonb not null default '[]',
+  linked_at timestamptz not null default now()
+);
+
+alter table app_users enable row level security;
+alter table products enable row level security;
+alter table sales enable row level security;
+alter table sale_items enable row level security;
+alter table settings enable row level security;
+alter table telegram_links enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Hitung satu baris transaksi dari JSON {product_id, qty, nominal?, unit_price?}
+-- lalu simpan ke sale_items dan kurangi stok. Dipakai oleh create/update sale.
+-- ---------------------------------------------------------------------------
+create or replace function _apply_sale_items(p_sale uuid, p_items jsonb)
+returns void language plpgsql as $$
+declare
+  it jsonb;
+  prod products%rowtype;
+  cfg jsonb;
+  v_qty int;
+  v_nominal int;
+  v_blocks int;
+  v_price int;
+  v_cost int;
+begin
+  select value into cfg from settings where key = 'emoney';
+  cfg := coalesce(cfg, '{"block": 100000, "profit": 3500, "admin": 1500}');
+
+  for it in select * from jsonb_array_elements(p_items) loop
+    select * into prod from products where id = (it->>'product_id')::uuid for update;
+    if not found then
+      raise exception 'Barang tidak ditemukan';
+    end if;
+
+    if prod.kind = 'emoney' then
+      v_nominal := (it->>'nominal')::int;
+      if v_nominal is null or v_nominal <= 0 then
+        raise exception 'Nominal saldo harus diisi';
+      end if;
+      v_blocks := ceil(v_nominal::numeric / (cfg->>'block')::int);
+      v_qty := 1;
+      v_price := v_blocks * ((cfg->>'profit')::int + (cfg->>'admin')::int);
+      v_cost := v_blocks * (cfg->>'admin')::int;
+    else
+      v_qty := (it->>'qty')::int;
+      if v_qty is null or v_qty <= 0 then
+        raise exception 'Jumlah harus lebih dari 0';
+      end if;
+      if prod.stock < v_qty then
+        raise exception 'Stok % tinggal %', prod.name || coalesce(' - ' || nullif(prod.variant, ''), ''), prod.stock;
+      end if;
+      v_nominal := null;
+      v_price := coalesce((it->>'unit_price')::int, prod.sell_price);
+      v_cost := prod.buy_price;
+      update products set stock = stock - v_qty where id = prod.id;
+    end if;
+
+    insert into sale_items (sale_id, product_id, name, kind, qty, unit_price, unit_cost, nominal, profit)
+    values (p_sale, prod.id, prod.name || coalesce(' - ' || nullif(prod.variant, ''), ''), prod.kind, v_qty, v_price, v_cost, v_nominal, (v_price - v_cost) * v_qty);
+  end loop;
+
+  update sales set
+    total = coalesce((select sum(unit_price * qty) from sale_items where sale_id = p_sale), 0),
+    profit = coalesce((select sum(profit) from sale_items where sale_id = p_sale), 0)
+  where id = p_sale;
+end $$;
+
+create or replace function create_sale(p_items jsonb, p_note text default null,
+                                       p_source text default 'web', p_at timestamptz default now())
+returns uuid language plpgsql as $$
+declare v_id uuid;
+begin
+  if jsonb_array_length(p_items) = 0 then
+    raise exception 'Transaksi kosong';
+  end if;
+  insert into sales (note, source, created_at) values (p_note, p_source, p_at) returning id into v_id;
+  perform _apply_sale_items(v_id, p_items);
+  return v_id;
+end $$;
+
+-- Ubah transaksi: kembalikan stok lama, ganti isi, kurangi stok baru.
+create or replace function update_sale(p_id uuid, p_items jsonb, p_note text default null)
+returns void language plpgsql as $$
+begin
+  if jsonb_array_length(p_items) = 0 then
+    raise exception 'Transaksi kosong';
+  end if;
+  perform 1 from sales where id = p_id for update;
+  if not found then raise exception 'Transaksi tidak ditemukan'; end if;
+
+  update products p set stock = p.stock + s.q
+  from (select product_id, sum(qty) q from sale_items
+        where sale_id = p_id and kind = 'barang' and product_id is not null
+        group by product_id) s
+  where p.id = s.product_id;
+
+  delete from sale_items where sale_id = p_id;
+  update sales set note = p_note where id = p_id;
+  perform _apply_sale_items(p_id, p_items);
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Laporan (hari dihitung menurut WIB)
+-- ---------------------------------------------------------------------------
+create or replace function daily_stats(p_from date, p_to date)
+returns table (day date, total bigint, profit bigint, trx bigint)
+language sql stable as $$
+  select d::date,
+         coalesce(sum(s.total), 0)::bigint,
+         coalesce(sum(s.profit), 0)::bigint,
+         count(s.id)::bigint
+  from generate_series(p_from::timestamp, p_to::timestamp, interval '1 day') d
+  left join sales s on (s.created_at at time zone 'Asia/Jakarta')::date = d::date
+  group by d order by d;
+$$;
+
+create or replace function item_stats(p_from date, p_to date)
+returns table (product_id uuid, name text, kind text, qty bigint, total bigint, profit bigint)
+language sql stable as $$
+  select i.product_id, i.name, i.kind,
+         sum(i.qty)::bigint, sum(i.unit_price * i.qty)::bigint, sum(i.profit)::bigint
+  from sale_items i join sales s on s.id = i.sale_id
+  where (s.created_at at time zone 'Asia/Jakarta')::date between p_from and p_to
+  group by i.product_id, i.name, i.kind
+  order by sum(i.profit) desc;
+$$;
+
+-- Fungsi hanya boleh dipanggil dari server (service role).
+revoke all on function _apply_sale_items(uuid, jsonb) from public, anon, authenticated;
+revoke all on function create_sale(jsonb, text, text, timestamptz) from public, anon, authenticated;
+revoke all on function update_sale(uuid, jsonb, text) from public, anon, authenticated;
+revoke all on function daily_stats(date, date) from public, anon, authenticated;
+revoke all on function item_stats(date, date) from public, anon, authenticated;
