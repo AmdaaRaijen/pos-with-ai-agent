@@ -136,7 +136,7 @@
 						<span class="text-sm text-emerald-800">Isi saldo, biaya admin dihitung otomatis</span>
 					{:else}
 						<span class="mt-3">
-							<span class="block text-lg font-semibold">{rp(minPrice)}</span>
+							<span class="block text-lg font-semibold {minPrice === 0 ? 'text-zinc-500' : ''}">{minPrice === 0 ? 'Pendukung' : rp(minPrice)}</span>
 							{#if grouped}
 								<span class="block text-sm {out ? 'font-semibold text-rose-600' : 'text-zinc-500'}">{out ? 'Habis' : `${t.items.length} pilihan, sisa ${p.stock}`}</span>
 							{:else}
@@ -267,7 +267,7 @@
 
 	<div class="mt-5 rounded-3xl bg-emerald-50 p-4" aria-live="polite">
 		{#if nominal > 0}
-			<p class="text-sm text-emerald-900">Biaya admin ({fee.blocks} x kelipatan {shortRp(data.emoney.block)})</p>
+			<p class="text-sm text-emerald-900">Biaya admin ({fee.blocks} kelipatan {shortRp(data.emoney.block)}{data.emoney.adminMode === 'flat' ? ', admin sekali' : ''})</p>
 			<p class="text-2xl font-bold tracking-tight text-emerald-900">{rp(fee.fee)}</p>
 			<p class="mt-2 text-sm text-emerald-900">Pelanggan bayar <span class="font-bold">{rp(fee.customerPays)}</span>, untung toko {rp(fee.profit)}</p>
 		{:else}

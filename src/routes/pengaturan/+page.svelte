@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance, type SubmitFunction } from '$app/forms';
-	import { rp } from '#lib/money.ts';
+	import { emoneyFee, rp } from '#lib/money.ts';
 	import { toast } from '#lib/toast.svelte.ts';
 	import MoneyInput from '#lib/components/MoneyInput.svelte';
 	import TelegramLogo from 'phosphor-svelte/lib/TelegramLogo';
@@ -19,6 +19,9 @@
 	let profit = $state(data.emoney.profit);
 	// svelte-ignore state_referenced_locally
 	let admin = $state(data.emoney.admin);
+	// svelte-ignore state_referenced_locally
+	let adminMode = $state<'flat' | 'block'>(data.emoney.adminMode);
+	const cfgPreview = $derived({ block, profit, admin, adminMode });
 	let busy = $state('');
 
 	/** Semua form: tampilkan toast hasil, kosongkan isian kalau berhasil */
@@ -58,11 +61,12 @@
 	<!-- Aturan e-money -->
 	<section class="rise" style="--i:2">
 		<h2 class="mb-1 px-1 text-base font-semibold">Aturan saldo e-money</h2>
-		<p class="mb-3 px-1 text-sm text-zinc-500">Tiap kelipatan nominal di bawah dihitung satu transaksi, dibulatkan ke atas.</p>
+		<p class="mb-3 px-1 text-sm text-zinc-500">Untung dihitung per kelipatan nominal (dibulatkan ke atas). Biaya admin bisa flat atau per kelipatan.</p>
 		<form method="POST" action="?/emoney" use:enhance={submit('emoney')} class="flex flex-col gap-4 rounded-[2rem] border border-zinc-200/70 bg-white p-5 shadow-lift">
 			<input type="hidden" name="block" value={block} />
 			<input type="hidden" name="profit" value={profit} />
 			<input type="hidden" name="admin" value={admin} />
+			<input type="hidden" name="adminMode" value={adminMode} />
 			<div>
 				<label class="label" for="block">Kelipatan</label>
 				<MoneyInput id="block" bind:value={block} />
@@ -72,11 +76,19 @@
 				<MoneyInput id="eprofit" bind:value={profit} />
 			</div>
 			<div>
-				<label class="label" for="eadmin">Biaya admin per kelipatan</label>
+				<label class="label" for="eadmin">Biaya admin</label>
 				<MoneyInput id="eadmin" bind:value={admin} />
+				<div class="mt-3 grid grid-cols-2 gap-1 rounded-2xl bg-zinc-100 p-1 text-sm font-semibold" role="tablist" aria-label="Cara hitung biaya admin">
+					<button type="button" role="tab" aria-selected={adminMode === 'flat'} class="press rounded-xl py-2.5 {adminMode === 'flat' ? 'bg-white shadow-sm' : 'text-zinc-500'}" onclick={() => (adminMode = 'flat')}>Flat (sekali)</button>
+					<button type="button" role="tab" aria-selected={adminMode === 'block'} class="press rounded-xl py-2.5 {adminMode === 'block' ? 'bg-white shadow-sm' : 'text-zinc-500'}" onclick={() => (adminMode = 'block')}>Per kelipatan</button>
+				</div>
+				<p class="mt-2 text-sm text-zinc-500">
+					{adminMode === 'flat' ? 'Biaya admin hanya dihitung sekali per transaksi, berapa pun nominalnya.' : 'Biaya admin dikali jumlah kelipatan.'}
+				</p>
 			</div>
 			<p class="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-				Pelanggan membayar {rp(profit + admin)} setiap {rp(block)}. Contoh {rp(block * 2)} = {rp((profit + admin) * 2)}, {rp(block * 2 + block / 5)} = {rp((profit + admin) * 3)}.
+				Untung {rp(profit)} tiap kelipatan {rp(block)}{adminMode === 'flat' ? `, ditambah admin ${rp(admin)} sekali` : `, ditambah admin ${rp(admin)} tiap kelipatan`}.
+				Contoh {rp(block * 2)} = {rp(emoneyFee(block * 2, cfgPreview).fee)}, {rp(block * 2 + block / 5)} = {rp(emoneyFee(block * 2 + block / 5, cfgPreview).fee)}.
 			</p>
 			<button class="btn-primary" disabled={busy === 'emoney'}>Simpan aturan</button>
 		</form>

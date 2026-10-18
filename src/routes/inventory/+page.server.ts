@@ -21,7 +21,7 @@ export const actions: Actions = {
 
 		const buy = int(f.get('buy_price'));
 		const sell = int(f.get('sell_price'));
-		if (kind === 'barang' && !f.get('variants') && sell < buy) return fail(400, { error: 'Harga jual lebih kecil dari harga beli. Cek lagi ya.' });
+		if (kind === 'barang' && !f.get('variants') && sell !== 0 && sell < buy) return fail(400, { error: 'Harga jual lebih kecil dari harga beli. Cek lagi ya.' });
 
 		// Tambah baru dengan beberapa varian sekaligus (stok dipakai bersama)
 		const rawVariants = !id && kind === 'barang' ? String(f.get('variants') ?? '') : '';
@@ -41,7 +41,7 @@ export const actions: Actions = {
 				const k = v.variant.toLowerCase();
 				if (seen.has(k)) return fail(400, { error: `Varian ${v.variant} dipilih dua kali.` });
 				if (existing.has(k)) return fail(400, { error: `Varian ${v.variant} sudah ada untuk ${name}.` });
-				if (v.sell_price < buy) return fail(400, { error: `Harga jual ${v.variant} lebih kecil dari harga beli. Cek lagi ya.` });
+				if (v.sell_price !== 0 && v.sell_price < buy) return fail(400, { error: `Harga jual ${v.variant} lebih kecil dari harga beli. Cek lagi ya.` });
 				seen.add(k);
 			}
 			if (list.length) {

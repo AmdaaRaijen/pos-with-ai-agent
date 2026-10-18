@@ -1,6 +1,6 @@
 import { db, must } from './db';
 import { addDays, DEFAULT_EMONEY, wibDate, type EmoneyConfig } from '#lib/money.ts';
-import { label, type CartLine, type DayStat, type ItemStat, type Product, type Sale } from '#lib/types.ts';
+import { label, type CartLine, type DayStat, type Expense, type ItemStat, type Product, type Sale } from '#lib/types.ts';
 
 /* ---------- Pengaturan ---------- */
 
@@ -13,7 +13,10 @@ export async function setSetting(key: string, value: unknown) {
 	must(await db().from('settings').upsert({ key, value }));
 }
 
-export const getEmoneyConfig = () => getSetting<EmoneyConfig>('emoney', DEFAULT_EMONEY);
+export const getEmoneyConfig = async (): Promise<EmoneyConfig> => ({
+	...DEFAULT_EMONEY,
+	...(await getSetting<Partial<EmoneyConfig>>('emoney', {}))
+});
 export const getStoreName = async () => (await getSetting('store', { name: 'Toko Saya' })).name;
 export const getWhitelist = () => getSetting<string[]>('telegram_whitelist', []);
 
@@ -104,6 +107,10 @@ export async function createSale(lines: CartLine[], note: string | null, source:
 	return must(await db().rpc('create_sale', { p_items: lines, p_note: note, p_source: source })) as string;
 }
 
+export async function deleteSale(id: string) {
+	must(await db().rpc('delete_sale', { p_id: id }));
+}
+
 export async function updateSale(id: string, lines: CartLine[], note: string | null) {
 	must(await db().rpc('update_sale', { p_id: id, p_items: lines, p_note: note }));
 }
@@ -112,7 +119,7 @@ export async function updateSale(id: string, lines: CartLine[], note: string | n
 
 export async function dailyStats(from: string, to: string): Promise<DayStat[]> {
 	const rows = must(await db().rpc('daily_stats', { p_from: from, p_to: to })) as DayStat[];
-	return rows.map((r) => ({ day: r.day, total: +r.total, profit: +r.profit, trx: +r.trx }));
+	return rows.map((r) => ({ day: r.day, total: +r.total, profit: +r.profit, trx: +r.trx, expense: +r.expense }));
 }
 
 export async function itemStats(from: string, to: string): Promise<ItemStat[]> {
@@ -126,9 +133,34 @@ export async function summary(from: string, to: string) {
 		from,
 		to,
 		total: days.reduce((a, d) => a + d.total, 0),
-		profit: days.reduce((a, d) => a + d.profit, 0),
+		profit: days.reduce((a, d) => a + d.profit, 0), // untung dari jualan
+		expense: days.reduce((a, d) => a + d.expense, 0), // pengeluaran lain-lain
+		net: days.reduce((a, d) => a + d.profit - d.expense, 0),
 		trx: days.reduce((a, d) => a + d.trx, 0)
 	};
+}
+
+/* ---------- Pengeluaran lain-lain ---------- */
+
+export async function listExpenses(from: string, to: string): Promise<Expense[]> {
+	return must(
+		await db().from('expenses').select('*').gte('spent_on', from).lte('spent_on', to)
+			.order('spent_on', { ascending: false }).order('created_at', { ascending: false }).limit(200)
+	) as Expense[];
+}
+
+export async function createExpense(name: string, amount: number, spentOn?: string, source: 'web' | 'telegram' = 'web'): Promise<Expense> {
+	const row: Record<string, unknown> = { name: name.trim(), amount, source };
+	if (spentOn) row.spent_on = spentOn;
+	return must(await db().from('expenses').insert(row).select().single()) as Expense;
+}
+
+export async function getExpense(id: string): Promise<Expense | null> {
+	return must(await db().from('expenses').select('*').eq('id', id).maybeSingle()) as Expense | null;
+}
+
+export async function deleteExpense(id: string) {
+	must(await db().from('expenses').delete().eq('id', id));
 }
 
 /* ---------- Saran ---------- */

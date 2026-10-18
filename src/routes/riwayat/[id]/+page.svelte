@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { dayLabel, emoneyFee, rp, timeLabel, wibDate } from '#lib/money.ts';
+	import { label, type Product } from '#lib/types.ts';
+	import Sheet from '#lib/components/Sheet.svelte';
+	import Warning from 'phosphor-svelte/lib/Warning';
 	import { toast } from '#lib/toast.svelte.ts';
 	import MoneyInput from '#lib/components/MoneyInput.svelte';
 	import ArrowLeft from 'phosphor-svelte/lib/ArrowLeft';
@@ -28,6 +31,18 @@
 	// svelte-ignore state_referenced_locally
 	let note = $state(data.sale.note ?? '');
 	let saving = $state(false);
+	let confirmSave = $state(false);
+	let confirmDelete = $state(false);
+	let deleting = $state(false);
+	let addOpen = $state(false);
+
+	function addProduct(p: Product) {
+		const cur = p.kind === 'barang' ? lines.find((l) => l.product_id === p.id) : undefined;
+		if (cur) cur.qty++;
+		else lines.push({ product_id: p.id, name: label(p), kind: p.kind, qty: 1, price: p.sell_price, nominal: 0 });
+		addOpen = false;
+		confirmSave = false;
+	}
 
 	const payload = $derived(
 		lines.map((l) => (l.kind === 'emoney' ? { product_id: l.product_id, qty: 1, nominal: l.nominal } : { product_id: l.product_id, qty: l.qty, unit_price: l.price }))
@@ -56,6 +71,7 @@
 		saving = true;
 		return async ({ result, update }) => {
 			saving = false;
+			confirmSave = false;
 			if (result.type === 'success') {
 				toast('Perubahan tersimpan');
 				await update({ reset: false });
@@ -109,8 +125,64 @@
 		<span class="text-xl font-bold">{rp(total)}</span>
 	</div>
 
-	<button class="btn-primary mt-5 w-full" disabled={saving || lines.some((l) => l.kind === 'emoney' && l.nominal <= 0)}>
-		{saving ? 'Menyimpan...' : 'Simpan perubahan'}
-	</button>
-	<p class="mt-3 text-center text-sm text-zinc-500">Stok barang ikut dihitung ulang.</p>
+	<button type="button" class="btn-soft mt-5 w-full" onclick={() => (addOpen = true)}><Plus size={20} weight="bold" /> Tambah barang ke transaksi ini</button>
+
+	{#if confirmSave}
+		<div class="mt-5 rounded-3xl bg-amber-50 p-4 text-amber-900" role="alert">
+			<p class="flex items-center gap-2 text-base font-semibold"><Warning size={20} weight="bold" /> Simpan perubahan?</p>
+			<p class="mt-1 text-sm">Isi transaksi diganti, stok barang dihitung ulang, dan laporan keuangan ikut berubah.</p>
+			<div class="mt-4 grid grid-cols-2 gap-3">
+				<button type="button" class="btn-soft" onclick={() => (confirmSave = false)}>Periksa lagi</button>
+				<button class="btn-primary" disabled={saving}>{saving ? 'Menyimpan...' : 'Ya, simpan'}</button>
+			</div>
+		</div>
+	{:else}
+		<button type="button" class="btn-primary mt-3 w-full" disabled={lines.some((l) => l.kind === 'emoney' && l.nominal <= 0)} onclick={() => (confirmSave = true)}>Simpan perubahan</button>
+	{/if}
 </form>
+
+<!-- Hapus transaksi -->
+<form
+	method="POST"
+	action="?/remove"
+	class="mt-8"
+	use:enhance={() => {
+		deleting = true;
+		return async ({ result, update }) => {
+			deleting = false;
+			if (result.type === 'failure') toast(String(result.data?.error ?? 'Gagal menghapus'), 'error');
+			else if (result.type === 'error') toast('Gagal menghapus. Cek sambungan internet.', 'error');
+			else toast('Transaksi dihapus');
+			await update();
+		};
+	}}
+>
+	{#if confirmDelete}
+		<div class="rounded-3xl bg-rose-50 p-4 text-rose-900" role="alert">
+			<p class="flex items-center gap-2 text-base font-semibold"><Warning size={20} weight="bold" /> Hapus transaksi ini?</p>
+			<p class="mt-1 text-sm">Transaksi hilang dari laporan dan stok barangnya dikembalikan. Ini tidak bisa dibatalkan.</p>
+			<div class="mt-4 grid grid-cols-2 gap-3">
+				<button type="button" class="btn-soft" onclick={() => (confirmDelete = false)}>Batal</button>
+				<button class="btn-danger !bg-rose-700 !text-white" disabled={deleting}>{deleting ? 'Menghapus...' : 'Ya, hapus'}</button>
+			</div>
+		</div>
+	{:else}
+		<button type="button" class="btn-danger w-full" onclick={() => (confirmDelete = true)}><Trash size={20} /> Hapus transaksi</button>
+	{/if}
+</form>
+
+<Sheet bind:open={addOpen} title="Tambah barang">
+	<ul class="divide-y divide-zinc-100">
+		{#each data.products as p (p.id)}
+			<li>
+				<button type="button" class="press flex min-h-16 w-full items-center justify-between gap-3 py-3 text-left" onclick={() => addProduct(p)}>
+					<span class="min-w-0">
+						<span class="block truncate text-base font-semibold">{label(p)}</span>
+						<span class="block text-sm text-zinc-500">{p.kind === 'emoney' ? 'Saldo e-money' : p.sell_price === 0 ? 'Pendukung' : rp(p.sell_price)}</span>
+					</span>
+					<Plus size={20} weight="bold" class="shrink-0 text-emerald-700" />
+				</button>
+			</li>
+		{/each}
+	</ul>
+</Sheet>

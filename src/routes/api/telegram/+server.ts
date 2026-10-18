@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { TELEGRAM_WEBHOOK_SECRET } from '$app/env/private';
 import { json } from '@sveltejs/kit';
-import { ask, type Turn } from '#lib/server/assistant.ts';
+import { ask, runPending, type Pending, type Turn } from '#lib/server/assistant.ts';
 import { db, must } from '#lib/server/db.ts';
 import { getWhitelist } from '#lib/server/data.ts';
 import { askForContact, removeKeyboard, sendMessage, sendTyping } from '#lib/server/telegram.ts';
@@ -18,7 +18,12 @@ type Update = {
 	};
 };
 
-type Link = { chat_id: number; phone: string; history: Turn[] };
+type Link = { chat_id: number; phone: string; history: Turn[]; pending: Pending | null };
+
+// Persetujuan perubahan data ditangani di sini (bukan oleh AI), supaya tidak bisa terlewat.
+const YES = /^(ya|iya|iy|y|ok|oke|okay|yes|lanjut|lanjutkan|boleh|setuju|gas|siap|betul|benar|silakan|silahkan)\b/i;
+const NO = /^(tidak|nggak|ngga|gak|enggak|engga|batal|batalkan|jangan|cancel|stop|no)\b/i;
+const PENDING_TTL = 10 * 60_000;
 
 // Telegram mengirim ulang update kalau balasan lambat. Simpan id terakhir supaya tidak diproses dua kali.
 const seen = new Set<number>();
@@ -92,9 +97,27 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ ok: true });
 		}
 
+		// Ada perubahan data yang menunggu persetujuan
+		const pending = link.pending && Date.now() - link.pending.at < PENDING_TTL ? link.pending : null;
+		if (link.pending) {
+			// dikosongkan dulu supaya kiriman ulang dari Telegram tidak melaksanakannya dua kali
+			must(await db().from('telegram_links').update({ pending: null }).eq('chat_id', chatId));
+		}
+		if (pending && YES.test(text)) {
+			await sendTyping(chatId);
+			const done = await runPending(Array.isArray(link.history) ? link.history : [], pending, text);
+			must(await db().from('telegram_links').update({ history: done.history }).eq('chat_id', chatId));
+			await sendMessage(chatId, done.reply);
+			return json({ ok: true });
+		}
+		if (pending && NO.test(text)) {
+			await sendMessage(chatId, 'Baik, Bu, tidak jadi. Tidak ada yang diubah.');
+			return json({ ok: true });
+		}
+
 		await sendTyping(chatId);
 		const out = await ask(Array.isArray(link.history) ? link.history : [], text.slice(0, 1500));
-		must(await db().from('telegram_links').update({ history: out.history }).eq('chat_id', chatId));
+		must(await db().from('telegram_links').update({ history: out.history, pending: out.pending }).eq('chat_id', chatId));
 		await sendMessage(chatId, out.reply);
 	} catch (e) {
 		console.error('telegram webhook error', e);

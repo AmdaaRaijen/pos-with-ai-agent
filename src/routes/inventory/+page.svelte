@@ -141,10 +141,10 @@
 						<button class="press flex min-h-18 w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-zinc-50" onclick={() => openForm(p)}>
 							<span class="min-w-0 flex-1">
 								<span class="block truncate text-base font-semibold">{label(p)}</span>
-								<span class="block text-sm text-zinc-500"><span class="whitespace-nowrap">Beli {rp(p.buy_price)}</span> <span class="whitespace-nowrap">untung {rp(p.sell_price - p.buy_price)}</span></span>
+								<span class="block text-sm text-zinc-500"><span class="whitespace-nowrap">Beli {rp(p.buy_price)}</span> <span class="whitespace-nowrap">{p.sell_price === 0 ? 'tidak dijual' : `untung ${rp(p.sell_price - p.buy_price)}`}</span></span>
 							</span>
 							<span class="text-right">
-								<span class="block text-base font-semibold">{rp(p.sell_price)}</span>
+								<span class="block text-base font-semibold">{p.sell_price === 0 ? 'Pendukung' : rp(p.sell_price)}</span>
 								<span class="block text-sm font-medium {p.stock <= 0 ? 'text-rose-600' : p.stock <= 3 ? 'text-amber-700' : 'text-zinc-500'}">
 									{p.stock <= 0 ? 'Habis' : `Sisa ${p.stock}`}
 								</span>
@@ -273,7 +273,9 @@
 							<label class="label !text-emerald-900" for="vs-{v}">{name.trim() || 'Barang'} - {v}</label>
 							<MoneyInput id="vs-{v}" bind:value={vsell[v]} />
 							<p class="mt-1.5 text-sm text-emerald-900">
-								{#if (vsell[v] ?? 0) < buy}
+								{#if (vsell[v] ?? 0) === 0}
+									Pendukung, tidak dihitung sebagai pemasukan.
+								{:else if (vsell[v] ?? 0) < buy}
 									<span class="font-semibold text-rose-700">Di bawah modal, rugi {rp(buy - (vsell[v] ?? 0))}.</span>
 								{:else}
 									Untung {rp((vsell[v] ?? 0) - buy)} per barang.
@@ -286,8 +288,11 @@
 			<div class="rounded-3xl bg-emerald-50 p-4">
 				<label class="label !text-emerald-900" for="sell">Harga jual</label>
 				<MoneyInput id="sell" bind:value={sell} onchange={recalcProfit} />
+				<button type="button" class="press mt-3 min-h-10 rounded-xl bg-white px-3.5 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-200" onclick={() => { sell = 0; profit = 0; }}>Tidak dijual (Rp 0), misal sedotan atau cup</button>
 				<p class="mt-2 text-sm text-emerald-900">
-					{#if sell < buy}
+					{#if sell === 0}
+						<span class="font-semibold">Barang pendukung.</span> Tidak dihitung sebagai pemasukan. Modal {rp(buy)} tercatat sebagai biaya saat dipakai.
+					{:else if sell < buy}
 						<span class="font-semibold text-rose-700">Harga jual di bawah modal, rugi {rp(buy - sell)}.</span>
 					{:else}
 						Untung {rp(sell - buy)} per barang{percent ? ` (${percent}% dari harga jual)` : ''}.
@@ -306,8 +311,8 @@
 			<div class="rounded-3xl bg-emerald-50 p-4 text-sm text-emerald-900">
 				<p class="font-semibold">Harga jual dihitung otomatis</p>
 				<p class="mt-1">
-					Setiap kelipatan {rp(data.emoney.block)} biayanya {rp(data.emoney.profit + data.emoney.admin)}
-					(untung {rp(data.emoney.profit)} + admin {rp(data.emoney.admin)}).
+					Untung {rp(data.emoney.profit)} tiap kelipatan {rp(data.emoney.block)}, ditambah biaya admin {rp(data.emoney.admin)}
+					{data.emoney.adminMode === 'flat' ? 'sekali per transaksi' : 'tiap kelipatan'}.
 				</p>
 				<p class="mt-2">Contoh: {rp(200_000)} biayanya {rp(ruleFee(200_000))}, {rp(220_000)} biayanya {rp(ruleFee(220_000))}.</p>
 			</div>

@@ -14,15 +14,20 @@ Barang yang harganya beda (Es / Hangat, Kecil / Besar) dibuat sebagai barang ber
 
 **Database yang sudah dibuat sebelumnya:** jalankan ulang seluruh `supabase/schema.sql` di SQL Editor (aman diulang). Ini menambah kolom `variant`, memperbarui fungsi transaksi, dan menyamakan stok varian yang sudah ada (diambil angka terbesar).
 
+## Barang pendukung dan pengeluaran
+
+- Barang dengan **harga jual Rp 0** (sedotan, cup, es batu) dicatat sebagai barang pendukung: stoknya berkurang saat dipakai di transaksi, tidak dihitung sebagai pemasukan, dan modalnya mengurangi untung. Isi harga beli per satuan pakai.
+- **Pengeluaran lain-lain** (biaya keamanan, listrik, dll) dicatat di menu Keuangan, atau lewat Telegram. Untung bersih = untung jualan dikurangi pengeluaran. Tabel `expenses` ditambahkan oleh `schema.sql` (jalankan ulang).
+
 ## Aturan saldo e-money
 
-Setiap kelipatan Rp 100.000 (dibulatkan ke atas) dihitung satu transaksi: untung Rp 3.500 + biaya admin Rp 1.500 = Rp 5.000.
+Untung Rp 3.500 dihitung tiap kelipatan Rp 100.000 (dibulatkan ke atas). Biaya admin Rp 1.500 **flat**: hanya sekali per transaksi, berapa pun nominalnya. Di Pengaturan bisa diganti ke "Per kelipatan" (admin dikali jumlah kelipatan, seperti 200rb = Rp 10.000, 220rb = Rp 15.000).
 
 | Nominal | Biaya yang dibayar pelanggan |
 | ------- | ---------------------------- |
 | 100.000 | 5.000                        |
-| 200.000 | 10.000                       |
-| 220.000 | 15.000                       |
+| 200.000 | 8.500                        |
+| 220.000 | 12.000                       |
 
 Angka-angka ini bisa diubah di Pengaturan. Pemasukan toko dari saldo hanya biaya tersebut, nominal saldo tidak dihitung sebagai pemasukan.
 
@@ -54,7 +59,11 @@ Semua tabel dikunci dengan RLS tanpa policy, jadi data hanya bisa diakses lewat 
 3. Pengguna membuka bot, menekan Start, lalu **Bagikan nomor HP**. Nomor dari Telegram dicocokkan dengan daftar. Telegram hanya menyerahkan nomor milik akun itu sendiri, jadi tidak bisa dipalsukan.
 4. Setelah cocok, tulis biasa: "jual 2 kopi dan 1 teh", "isi saldo DANA 220rb", "untung hari ini berapa?", "stok apa yang hampir habis?", "bawa apa saja besok?".
 
-Kemampuan asisten: catat, lihat, dan ubah penjualan; tambah, lihat, ubah, hapus barang; untung per periode; tren per hari; saran belanja stok; saran isi tas. Penyedia AI apa pun yang kompatibel OpenAI (chat completions dengan tool calling) bisa dipakai: ganti alamat API dan model di Pengaturan, dan kunci di `.env`.
+Kemampuan asisten: catat, lihat, ubah, dan hapus penjualan; tambah, lihat, ubah, hapus barang; untung per periode; tren per hari; saran belanja stok; saran isi tas. Penyedia AI apa pun yang kompatibel OpenAI (chat completions dengan tool calling) bisa dipakai: ganti alamat API dan model di Pengaturan, dan kunci di `.env`.
+
+## Persetujuan sebelum data berubah
+
+Asisten tidak hanya membaca: ia bisa menambah, mengubah, dan menghapus barang, penjualan, dan pengeluaran. Tetapi **setiap perubahan harus disetujui dulu**. Asisten hanya menyiapkan ringkasan ("Catat penjualan: Kopi - Es x2, total Rp 16.000"), lalu pengguna membalas **ya** atau **batal**. Persetujuan dicek oleh server, bukan oleh AI, dan kedaluwarsa setelah 10 menit. Di web, menyimpan perubahan dan menghapus transaksi juga meminta konfirmasi.
 
 ## Catatan teknis
 

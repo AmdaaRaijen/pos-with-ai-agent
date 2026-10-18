@@ -2,7 +2,10 @@
 	import { dayLabel, rp, shortRp } from '#lib/money.ts';
 	import type { DayStat } from '#lib/types.ts';
 
-	let { days, metric }: { days: DayStat[]; metric: 'profit' | 'total' } = $props();
+	let { days, metric }: { days: DayStat[]; metric: 'net' | 'total' } = $props();
+
+	/** net = untung jualan dikurangi pengeluaran lain-lain (bisa minus) */
+	const val = (d: DayStat) => (metric === 'net' ? d.profit - d.expense : d.total);
 
 	const W = 600;
 	const H = 240;
@@ -10,13 +13,14 @@
 
 	let picked = $state<number | null>(null);
 
-	const values = $derived(days.map((d) => d[metric]));
+	const values = $derived(days.map(val));
 	const max = $derived(niceMax(Math.max(...values, 0)));
+	const min = $derived(Math.min(...values) < 0 ? -niceMax(-Math.min(...values)) : 0);
 	const x = (i: number) => pad.l + (days.length <= 1 ? (W - pad.l - pad.r) / 2 : (i * (W - pad.l - pad.r)) / (days.length - 1));
-	const y = (v: number) => pad.t + (1 - v / max) * (H - pad.t - pad.b);
+	const y = (v: number) => pad.t + (1 - (v - min) / (max - min)) * (H - pad.t - pad.b);
 	const line = $derived(values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' '));
-	const area = $derived(days.length ? `${line} L${x(days.length - 1).toFixed(1)} ${H - pad.b} L${x(0).toFixed(1)} ${H - pad.b} Z` : '');
-	const ticks = $derived([0, 0.5, 1].map((f) => f * max));
+	const area = $derived(days.length ? `${line} L${x(days.length - 1).toFixed(1)} ${y(0).toFixed(1)} L${x(0).toFixed(1)} ${y(0).toFixed(1)} Z` : '');
+	const ticks = $derived(min < 0 ? [min, 0, max] : [0, max / 2, max]);
 	const sel = $derived(picked ?? days.length - 1);
 	const labelEvery = $derived(Math.max(1, Math.ceil(days.length / 6)));
 
@@ -33,10 +37,10 @@
 {#if days.length}
 	<p class="mb-1 min-h-6 text-sm text-zinc-500" aria-live="polite">
 		{dayLabel(days[sel].day)}:
-		<span class="font-semibold text-zinc-900">{rp(days[sel][metric])}</span>
-		<span class="text-zinc-400"> - {days[sel].trx} transaksi</span>
+		<span class="font-semibold {values[sel] < 0 ? 'text-rose-700' : 'text-zinc-900'}">{rp(values[sel])}</span>
+		<span class="text-zinc-400"> - {days[sel].trx} transaksi{days[sel].expense > 0 ? `, pengeluaran ${rp(days[sel].expense)}` : ''}</span>
 	</p>
-	<svg viewBox="0 0 {W} {H}" class="h-auto w-full touch-pan-y select-none" role="img" aria-label="Grafik {metric === 'profit' ? 'untung' : 'pemasukan'} per hari">
+	<svg viewBox="0 0 {W} {H}" class="h-auto w-full touch-pan-y select-none" role="img" aria-label="Grafik {metric === 'net' ? 'untung bersih' : 'pemasukan'} per hari">
 		{#each ticks as t (t)}
 			<line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} class="stroke-zinc-200" stroke-dasharray={t === 0 ? '' : '3 4'} />
 			<text x={pad.l - 10} y={y(t) + 7} text-anchor="end" class="fill-zinc-500 text-[20px]">{shortRp(t)}</text>
@@ -65,7 +69,7 @@
 				fill="transparent"
 				role="button"
 				tabindex="-1"
-				aria-label="{dayLabel(d.day)}: {rp(d[metric])}"
+				aria-label="{dayLabel(d.day)}: {rp(val(d))}"
 				onpointerdown={() => (picked = i)}
 				onpointerenter={(e) => e.pointerType === 'mouse' && (picked = i)}
 			/>

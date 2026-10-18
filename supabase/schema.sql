@@ -52,6 +52,18 @@ create table if not exists sale_items (
 create index if not exists sale_items_sale_idx on sale_items (sale_id);
 create index if not exists sale_items_product_idx on sale_items (product_id);
 
+-- Pengeluaran lain-lain (biaya keamanan, listrik, dll). Mengurangi untung bersih.
+create table if not exists expenses (
+  id uuid primary key default gen_random_uuid(),
+  spent_on date not null default ((now() at time zone 'Asia/Jakarta')::date),
+  name text not null,
+  amount integer not null check (amount > 0),
+  source text not null default 'web',
+  created_at timestamptz not null default now()
+);
+create index if not exists expenses_spent_idx on expenses (spent_on desc);
+alter table expenses enable row level security;
+
 create table if not exists settings (
   key text primary key,
   value jsonb not null
@@ -59,7 +71,7 @@ create table if not exists settings (
 
 insert into settings (key, value) values
   ('store', '{"name": "Toko Saya"}'),
-  ('emoney', '{"block": 100000, "profit": 3500, "admin": 1500}'),
+  ('emoney', '{"block": 100000, "profit": 3500, "admin": 1500, "adminMode": "flat"}'),
   ('telegram_whitelist', '[]')
 on conflict (key) do nothing;
 
@@ -70,6 +82,8 @@ create table if not exists telegram_links (
   history jsonb not null default '[]',
   linked_at timestamptz not null default now()
 );
+-- Perubahan data dari asisten menunggu persetujuan "ya" dari pengguna
+alter table telegram_links add column if not exists pending jsonb;
 
 alter table app_users enable row level security;
 alter table products enable row level security;
@@ -130,8 +144,11 @@ begin
       end if;
       v_blocks := ceil(v_nominal::numeric / (cfg->>'block')::int);
       v_qty := 1;
-      v_price := v_blocks * ((cfg->>'profit')::int + (cfg->>'admin')::int);
-      v_cost := v_blocks * (cfg->>'admin')::int;
+      -- biaya admin: flat (sekali per transaksi) kecuali adminMode = 'block'
+      v_cost := case when coalesce(cfg->>'adminMode', 'flat') = 'block'
+                     then v_blocks * (cfg->>'admin')::int
+                     else (cfg->>'admin')::int end;
+      v_price := v_blocks * (cfg->>'profit')::int + v_cost;
     else
       v_qty := (it->>'qty')::int;
       if v_qty is null or v_qty <= 0 then
@@ -188,16 +205,32 @@ begin
   perform _apply_sale_items(p_id, p_items);
 end $$;
 
+-- Hapus transaksi: kembalikan stok barang, lalu hapus transaksi beserta isinya.
+create or replace function delete_sale(p_id uuid)
+returns void language plpgsql as $$
+begin
+  perform 1 from sales where id = p_id for update;
+  if not found then raise exception 'Transaksi tidak ditemukan'; end if;
+
+  perform _stock_delta(product_id, qty)
+  from sale_items
+  where sale_id = p_id and kind = 'barang' and product_id is not null;
+
+  delete from sales where id = p_id;
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- Laporan (hari dihitung menurut WIB)
 -- ---------------------------------------------------------------------------
-create or replace function daily_stats(p_from date, p_to date)
-returns table (day date, total bigint, profit bigint, trx bigint)
+drop function if exists daily_stats(date, date);
+create function daily_stats(p_from date, p_to date)
+returns table (day date, total bigint, profit bigint, trx bigint, expense bigint)
 language sql stable as $$
   select d::date,
          coalesce(sum(s.total), 0)::bigint,
          coalesce(sum(s.profit), 0)::bigint,
-         count(s.id)::bigint
+         count(s.id)::bigint,
+         (select coalesce(sum(e.amount), 0) from expenses e where e.spent_on = d::date)::bigint
   from generate_series(p_from::timestamp, p_to::timestamp, interval '1 day') d
   left join sales s on (s.created_at at time zone 'Asia/Jakarta')::date = d::date
   group by d order by d;
@@ -219,5 +252,6 @@ revoke all on function _stock_delta(uuid, int) from public, anon, authenticated;
 revoke all on function _apply_sale_items(uuid, jsonb) from public, anon, authenticated;
 revoke all on function create_sale(jsonb, text, text, timestamptz) from public, anon, authenticated;
 revoke all on function update_sale(uuid, jsonb, text) from public, anon, authenticated;
+revoke all on function delete_sale(uuid) from public, anon, authenticated;
 revoke all on function daily_stats(date, date) from public, anon, authenticated;
 revoke all on function item_stats(date, date) from public, anon, authenticated;

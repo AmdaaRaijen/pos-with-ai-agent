@@ -53,7 +53,7 @@
 								</div>
 								<div class="text-right">
 									<p class="text-base font-semibold">{rp(s.total)}</p>
-									<p class="text-sm font-medium text-emerald-700">+{rp(s.profit)}</p>
+									<p class="text-sm font-medium {s.profit < 0 ? 'text-rose-700' : 'text-emerald-700'}">{s.profit < 0 ? '' : '+'}{rp(s.profit)}</p>
 								</div>
 								<CaretRight size={18} class="text-zinc-300" />
 							</a>

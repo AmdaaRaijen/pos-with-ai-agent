@@ -1,15 +1,25 @@
-import { error, fail } from '@sveltejs/kit';
-import { getEmoneyConfig, getSale, updateSale } from '#lib/server/data.ts';
+import { error, fail, redirect } from '@sveltejs/kit';
+import { deleteSale, getEmoneyConfig, getSale, listProducts, updateSale } from '#lib/server/data.ts';
 import type { CartLine } from '#lib/types.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
 	const sale = await getSale(params.id);
 	if (!sale) error(404, 'Transaksi tidak ditemukan');
-	return { sale, emoney: await getEmoneyConfig() };
+	const [emoney, products] = await Promise.all([getEmoneyConfig(), listProducts()]);
+	return { sale, emoney, products };
 };
 
 export const actions: Actions = {
+	remove: async ({ params }) => {
+		try {
+			await deleteSale(params.id);
+		} catch (e) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Gagal menghapus.' });
+		}
+		redirect(303, '/riwayat');
+	},
+
 	save: async ({ request, params }) => {
 		const form = await request.formData();
 		let lines: CartLine[];
