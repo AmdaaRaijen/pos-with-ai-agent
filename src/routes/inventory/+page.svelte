@@ -24,7 +24,12 @@
 	let kind = $state<'barang' | 'emoney'>('barang');
 	let name = $state('');
 	let variant = $state('');
-	const variantChips = ['Es', 'Hangat', 'Kecil', 'Besar'];
+	const DEFAULT_CHIPS = ['Es', 'Hangat', 'Kecil', 'Besar'];
+	let chips = $state([...DEFAULT_CHIPS]);
+	// Tambah baru: boleh pilih beberapa varian sekaligus, harga jual diisi per varian
+	let picked = $state<string[]>([]);
+	let vsell = $state<Record<string, number>>({});
+	let custom = $state('');
 	let buy = $state(0);
 	let profit = $state(0);
 	let sell = $state(0);
@@ -40,6 +45,8 @@
 			? data.products.filter((p) => p.kind === 'barang' && p.id !== editing?.id && p.name.trim().toLowerCase() === name.trim().toLowerCase())
 			: []
 	);
+	const multi = $derived(!editing && kind === 'barang');
+	const taken = $derived(new Set(siblings.map((s) => (s.variant ?? '').toLowerCase())));
 	const ruleFee = (n: number) => emoneyFee(n, data.emoney).fee;
 
 	function openForm(p: Product | null, k: 'barang' | 'emoney' = 'barang') {
@@ -52,10 +59,35 @@
 		profit = Math.max(0, sell - buy);
 		stock = p ? String(p.stock) : '';
 		confirmDelete = false;
+		picked = [];
+		vsell = {};
+		custom = '';
+		chips = [...DEFAULT_CHIPS];
 		open = true;
 	}
 
-	const recalcSell = () => (sell = buy + profit);
+	function toggle(v: string) {
+		if (picked.includes(v)) picked = picked.filter((x) => x !== v);
+		else {
+			picked = [...picked, v];
+			vsell[v] = sell || buy + profit;
+		}
+	}
+
+	function addCustom() {
+		const v = custom.trim().slice(0, 30);
+		custom = '';
+		if (!v) return;
+		const known = chips.find((c) => c.toLowerCase() === v.toLowerCase());
+		if (!known) chips = [...chips, v];
+		const use = known ?? v;
+		if (!picked.includes(use) && !taken.has(use.toLowerCase())) toggle(use);
+	}
+
+	const recalcSell = () => {
+		sell = buy + profit;
+		for (const v of picked) vsell[v] = sell;
+	};
 	const recalcProfit = () => (profit = Math.max(0, sell - buy));
 </script>
 
@@ -162,6 +194,9 @@
 		<input type="hidden" name="kind" value={kind} />
 		<input type="hidden" name="buy_price" value={buy} />
 		<input type="hidden" name="sell_price" value={sell} />
+		{#if multi && picked.length}
+			<input type="hidden" name="variants" value={JSON.stringify(picked.map((v) => ({ variant: v, sell_price: vsell[v] ?? 0 })))} />
+		{/if}
 
 		{#if !editing}
 			<div class="grid grid-cols-2 gap-1 rounded-2xl bg-zinc-100 p-1 text-sm font-semibold" role="tablist">
@@ -175,16 +210,48 @@
 			<input class="field" id="name" name="name" maxlength="60" placeholder={kind === 'emoney' ? 'Contoh: DANA' : 'Contoh: Kopi'} bind:value={name} required />
 		</div>
 
-		{#if kind === 'barang'}
+		{#if multi}
+			<div>
+				<span class="label">Varian (boleh pilih lebih dari satu, boleh kosong)</span>
+				<div class="flex flex-wrap gap-2">
+					{#each chips as c (c)}
+						{@const sudah = taken.has(c.toLowerCase())}
+						<button
+							type="button"
+							aria-pressed={picked.includes(c)}
+							disabled={sudah}
+							class="press min-h-11 rounded-xl px-4 text-sm font-semibold disabled:opacity-40 {picked.includes(c) ? 'bg-emerald-700 text-white' : 'bg-zinc-100 text-zinc-700'}"
+							onclick={() => toggle(c)}>{c}{sudah ? ' (sudah ada)' : ''}</button
+						>
+					{/each}
+				</div>
+				<div class="mt-3 flex gap-2">
+					<input
+						class="field"
+						placeholder="Varian lain, misal Jumbo"
+						maxlength="30"
+						aria-label="Varian lain"
+						bind:value={custom}
+						onkeydown={(e) => {
+							if (e.key === 'Enter') {
+								e.preventDefault();
+								addCustom();
+							}
+						}}
+					/>
+					<button type="button" class="btn-soft shrink-0" onclick={addCustom}>Tambah</button>
+				</div>
+				<p class="mt-2 text-sm text-zinc-500">Pakai kalau harganya beda, misalnya Es dan Hangat. Semua varian memakai satu stok yang sama.</p>
+			</div>
+		{:else if kind === 'barang'}
 			<div>
 				<label class="label" for="variant">Varian (boleh kosong)</label>
 				<input class="field" id="variant" name="variant" maxlength="30" placeholder="Contoh: Es" bind:value={variant} />
 				<div class="mt-2 flex flex-wrap gap-2">
-					{#each variantChips as c (c)}
+					{#each chips as c (c)}
 						<button type="button" class="press min-h-10 rounded-xl px-3.5 text-sm font-semibold {variant === c ? 'bg-emerald-700 text-white' : 'bg-zinc-100 text-zinc-700'}" onclick={() => (variant = variant === c ? '' : c)}>{c}</button>
 					{/each}
 				</div>
-				<p class="mt-2 text-sm text-zinc-500">Pakai kalau harganya beda, misalnya Es dan Hangat. Tiap varian punya harga dan stok sendiri.</p>
 			</div>
 		{/if}
 
@@ -196,7 +263,26 @@
 			<div>
 				<label class="label" for="profit">Untung yang diinginkan</label>
 				<MoneyInput id="profit" bind:value={profit} onchange={recalcSell} />
+				{#if multi && picked.length}<p class="mt-2 text-sm text-zinc-500">Mengisi harga jual semua varian. Harga tiap varian masih bisa diubah sendiri di bawah.</p>{/if}
 			</div>
+			{#if multi && picked.length}
+				<div class="space-y-4 rounded-3xl bg-emerald-50 p-4">
+					<p class="text-sm font-semibold text-emerald-900">Harga jual tiap varian</p>
+					{#each picked as v (v)}
+						<div>
+							<label class="label !text-emerald-900" for="vs-{v}">{name.trim() || 'Barang'} - {v}</label>
+							<MoneyInput id="vs-{v}" bind:value={vsell[v]} />
+							<p class="mt-1.5 text-sm text-emerald-900">
+								{#if (vsell[v] ?? 0) < buy}
+									<span class="font-semibold text-rose-700">Di bawah modal, rugi {rp(buy - (vsell[v] ?? 0))}.</span>
+								{:else}
+									Untung {rp((vsell[v] ?? 0) - buy)} per barang.
+								{/if}
+							</p>
+						</div>
+					{/each}
+				</div>
+			{:else}
 			<div class="rounded-3xl bg-emerald-50 p-4">
 				<label class="label !text-emerald-900" for="sell">Harga jual</label>
 				<MoneyInput id="sell" bind:value={sell} onchange={recalcProfit} />
@@ -208,6 +294,7 @@
 					{/if}
 				</p>
 			</div>
+			{/if}
 			<div>
 				<label class="label" for="stock">Stok sekarang</label>
 				<input class="field" id="stock" name="stock" inputmode="numeric" pattern="[0-9]*" placeholder="0" bind:value={stock} />
