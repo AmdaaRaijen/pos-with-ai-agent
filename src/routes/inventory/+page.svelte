@@ -34,6 +34,12 @@
 	const emoneyItems = $derived(list.filter((p) => p.kind === 'emoney'));
 	const goods = $derived(list.filter((p) => p.kind === 'barang'));
 	const percent = $derived(sell > 0 && sell >= buy ? Math.round(((sell - buy) / sell) * 100) : 0);
+	// Varian lain dari barang yang sama berbagi stok
+	const siblings = $derived(
+		kind === 'barang' && name.trim()
+			? data.products.filter((p) => p.kind === 'barang' && p.id !== editing?.id && p.name.trim().toLowerCase() === name.trim().toLowerCase())
+			: []
+	);
 	const ruleFee = (n: number) => emoneyFee(n, data.emoney).fee;
 
 	function openForm(p: Product | null, k: 'barang' | 'emoney' = 'barang') {
@@ -205,6 +211,9 @@
 			<div>
 				<label class="label" for="stock">Stok sekarang</label>
 				<input class="field" id="stock" name="stock" inputmode="numeric" pattern="[0-9]*" placeholder="0" bind:value={stock} />
+				{#if siblings.length}
+					<p class="mt-2 text-sm text-emerald-800">Stok ini dipakai bersama varian lain ({siblings.map((s) => s.variant ?? 'biasa').join(', ')}). Kalau diubah, semua varian ikut berubah.</p>
+				{/if}
 			</div>
 		{:else}
 			<div class="rounded-3xl bg-emerald-50 p-4 text-sm text-emerald-900">
@@ -230,6 +239,7 @@
 				name = base.name;
 				buy = base.buy_price;
 				sell = base.sell_price;
+				stock = String(base.stock);
 				profit = Math.max(0, sell - buy);
 			}}>Tambah varian lain dari "{editing.name}"</button
 		>

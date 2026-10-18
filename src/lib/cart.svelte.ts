@@ -14,13 +14,23 @@ class Cart {
 		return this.items.filter((i) => i.product.id === productId).reduce((a, i) => a + i.qty, 0);
 	}
 
+	/** Jumlah di keranjang untuk satu barang, semua variannya dihitung (stok dipakai bersama) */
+	private groupQty(p: Product): number {
+		const n = p.name.trim().toLowerCase();
+		return this.items
+			.filter((i) => i.product.kind === 'barang' && i.product.name.trim().toLowerCase() === n)
+			.reduce((a, i) => a + i.qty, 0);
+	}
+
+	canAdd(p: Product): boolean {
+		return this.groupQty(p) < p.stock;
+	}
+
 	addGoods(p: Product) {
+		if (!this.canAdd(p)) return;
 		const cur = this.items.find((i) => i.product.id === p.id);
-		if (cur) {
-			if (cur.qty < p.stock) cur.qty++;
-		} else if (p.stock > 0) {
-			this.items.push({ product: p, qty: 1 });
-		}
+		if (cur) cur.qty++;
+		else this.items.push({ product: p, qty: 1 });
 	}
 
 	addEmoney(p: Product, nominal: number) {
@@ -32,7 +42,7 @@ class Cart {
 		if (!it || it.product.kind === 'emoney') return;
 		const q = it.qty + delta;
 		if (q <= 0) this.items.splice(index, 1);
-		else if (q <= it.product.stock) it.qty = q;
+		else if (delta < 0 || this.canAdd(it.product)) it.qty = q;
 	}
 
 	remove(index: number) {

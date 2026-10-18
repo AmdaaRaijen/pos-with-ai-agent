@@ -138,7 +138,7 @@
 						<span class="mt-3">
 							<span class="block text-lg font-semibold">{rp(minPrice)}</span>
 							{#if grouped}
-								<span class="block text-sm {out ? 'font-semibold text-rose-600' : 'text-zinc-500'}">{out ? 'Habis' : `${t.items.length} pilihan, dari harga ini`}</span>
+								<span class="block text-sm {out ? 'font-semibold text-rose-600' : 'text-zinc-500'}">{out ? 'Habis' : `${t.items.length} pilihan, sisa ${p.stock}`}</span>
 							{:else}
 								<span class="block text-sm {out ? 'font-semibold text-rose-600' : p.stock <= 3 ? 'font-medium text-amber-700' : 'text-zinc-500'}">
 									{out ? 'Habis' : `Sisa ${p.stock}`}
@@ -216,7 +216,7 @@
 							<div class="flex items-center gap-1 rounded-2xl bg-zinc-100 p-1">
 								<button type="button" class="press grid size-11 place-items-center rounded-xl bg-white" onclick={() => cart.change(idx, -1)} aria-label="Kurangi"><Minus size={18} weight="bold" /></button>
 								<span class="w-9 text-center text-base font-semibold">{it.qty}</span>
-								<button type="button" class="press grid size-11 place-items-center rounded-xl bg-white disabled:opacity-40" disabled={it.qty >= it.product.stock} onclick={() => cart.change(idx, 1)} aria-label="Tambah"><Plus size={18} weight="bold" /></button>
+								<button type="button" class="press grid size-11 place-items-center rounded-xl bg-white disabled:opacity-40" disabled={!cart.canAdd(it.product)} onclick={() => cart.change(idx, 1)} aria-label="Tambah"><Plus size={18} weight="bold" /></button>
 							</div>
 						{:else}
 							<button type="button" class="press grid size-11 place-items-center rounded-xl bg-rose-50 text-rose-700" onclick={() => cart.remove(idx)} aria-label="Hapus"><Trash size={20} /></button>
@@ -295,7 +295,7 @@
 				>
 					<span>
 						<span class="block text-lg font-semibold">{v.variant ?? 'Biasa'}</span>
-						<span class="block text-sm {out ? 'font-semibold text-rose-600' : v.stock <= 3 ? 'font-medium text-amber-700' : 'text-zinc-500'}">{out ? 'Habis' : `Sisa ${v.stock}`}</span>
+						<span class="block text-sm {out ? 'font-semibold text-rose-600' : v.stock <= 3 ? 'font-medium text-amber-700' : 'text-zinc-500'}">{out ? 'Habis' : `Sisa ${v.stock} (dipakai bersama)`}</span>
 					</span>
 					<span class="flex items-center gap-3">
 						{#if n > 0}<span class="grid size-8 place-items-center rounded-full bg-emerald-700 text-sm font-bold text-white">{n}</span>{/if}

@@ -27,21 +27,38 @@ export async function listProducts(): Promise<Product[]> {
 
 export type ProductInput = { name: string; variant?: string | null; kind?: 'barang' | 'emoney'; buy_price?: number; sell_price?: number; stock?: number };
 
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** Varian satu barang (nama sama) berbagi satu stok. */
+async function groupOf(name: string): Promise<Product[]> {
+	return (await listProducts()).filter((x) => x.kind === 'barang' && sameName(x.name, name));
+}
+
+export async function setGroupStock(name: string, stock: number) {
+	const ids = (await groupOf(name)).map((x) => x.id);
+	if (ids.length) must(await db().from('products').update({ stock }).in('id', ids));
+}
+
 export async function createProduct(p: ProductInput): Promise<Product> {
-	return must(
+	const kind = p.kind ?? 'barang';
+	const siblings = kind === 'barang' ? await groupOf(p.name) : [];
+	const created = must(
 		await db()
 			.from('products')
 			.insert({
 				name: p.name.trim(),
 				variant: p.variant?.trim() || null,
-				kind: p.kind ?? 'barang',
+				kind,
 				buy_price: p.buy_price ?? 0,
 				sell_price: p.sell_price ?? 0,
-				stock: p.stock ?? 0
+				stock: p.stock ?? siblings[0]?.stock ?? 0
 			})
 			.select()
 			.single()
 	) as Product;
+	// stok yang diisi di varian baru berlaku untuk semua varian
+	if (siblings.length && p.stock !== undefined && p.stock !== siblings[0].stock) await setGroupStock(created.name, p.stock);
+	return created;
 }
 
 export async function updateProduct(id: string, p: Partial<ProductInput>): Promise<Product> {
@@ -50,8 +67,12 @@ export async function updateProduct(id: string, p: Partial<ProductInput>): Promi
 	if (p.variant !== undefined) patch.variant = p.variant?.trim() || null;
 	if (p.buy_price !== undefined) patch.buy_price = p.buy_price;
 	if (p.sell_price !== undefined) patch.sell_price = p.sell_price;
-	if (p.stock !== undefined) patch.stock = p.stock;
-	return must(await db().from('products').update(patch).eq('id', id).select().single()) as Product;
+	const updated = must(await db().from('products').update(patch).eq('id', id).select().single()) as Product;
+	if (p.stock !== undefined && updated.kind === 'barang') {
+		await setGroupStock(updated.name, p.stock);
+		updated.stock = p.stock;
+	}
+	return updated;
 }
 
 /** Barang tidak benar-benar dihapus supaya riwayat transaksi tetap utuh */
@@ -126,17 +147,23 @@ export async function stockAdvice(lookbackDays = 14, coverDays = 7): Promise<Sto
 	const today = wibDate();
 	const [products, stats] = await Promise.all([listProducts(), itemStats(addDays(today, -(lookbackDays - 1)), today)]);
 	const sold = new Map(stats.map((s) => [s.product_id, s.qty]));
-	return products
-		.filter((p) => p.kind === 'barang')
-		.map((p) => {
-			const perDay = (sold.get(p.id) ?? 0) / lookbackDays;
+	// satu baris per nama barang: semua variannya berbagi stok
+	const groups = new Map<string, Product[]>();
+	for (const p of products.filter((x) => x.kind === 'barang')) {
+		const k = p.name.trim().toLowerCase();
+		groups.set(k, [...(groups.get(k) ?? []), p]);
+	}
+	return [...groups.values()]
+		.map((g) => {
+			const stock = g[0].stock;
+			const perDay = g.reduce((a, p) => a + (sold.get(p.id) ?? 0), 0) / lookbackDays;
 			return {
-				name: label(p),
-				stock: p.stock,
+				name: g[0].name,
+				stock,
 				sold_per_day: Math.round(perDay * 10) / 10,
-				days_left: perDay > 0 ? Math.round((p.stock / perDay) * 10) / 10 : null,
-				buy_qty: Math.max(0, Math.ceil(perDay * coverDays - p.stock)),
-				profit_each: p.sell_price - p.buy_price
+				days_left: perDay > 0 ? Math.round((stock / perDay) * 10) / 10 : null,
+				buy_qty: Math.max(0, Math.ceil(perDay * coverDays - stock)),
+				profit_each: Math.round(g.reduce((a, p) => a + (p.sell_price - p.buy_price), 0) / g.length)
 			};
 		})
 		.filter((a) => a.sold_per_day > 0 || a.stock <= 0)

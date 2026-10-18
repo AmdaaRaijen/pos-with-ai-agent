@@ -82,6 +82,21 @@ alter table telegram_links enable row level security;
 -- Hitung satu baris transaksi dari JSON {product_id, qty, nominal?, unit_price?}
 -- lalu simpan ke sale_items dan kurangi stok. Dipakai oleh create/update sale.
 -- ---------------------------------------------------------------------------
+-- Varian satu barang (nama sama) berbagi satu stok: ubah stok semua varian aktif bersamaan.
+create or replace function _stock_delta(p_product uuid, p_delta int)
+returns void language sql as $$
+  update products set stock = stock + p_delta
+  where id = p_product
+     or (active and kind = 'barang'
+         and lower(name) = (select lower(name) from products where id = p_product));
+$$;
+
+-- Samakan stok varian yang sudah ada sebelumnya (ambil angka terbesar).
+update products p set stock = g.mx
+from (select lower(name) n, max(stock) mx from products
+      where active and kind = 'barang' group by 1 having count(*) > 1) g
+where p.active and p.kind = 'barang' and lower(p.name) = g.n and p.stock <> g.mx;
+
 create or replace function _apply_sale_items(p_sale uuid, p_items jsonb)
 returns void language plpgsql as $$
 declare
@@ -98,7 +113,12 @@ begin
   cfg := coalesce(cfg, '{"block": 100000, "profit": 3500, "admin": 1500}');
 
   for it in select * from jsonb_array_elements(p_items) loop
-    select * into prod from products where id = (it->>'product_id')::uuid for update;
+    -- kunci semua varian bernama sama supaya stok bersama tidak balapan
+    perform 1 from products
+      where kind = 'barang'
+        and lower(name) = (select lower(name) from products where id = (it->>'product_id')::uuid)
+      for update;
+    select * into prod from products where id = (it->>'product_id')::uuid;
     if not found then
       raise exception 'Barang tidak ditemukan';
     end if;
@@ -123,7 +143,7 @@ begin
       v_nominal := null;
       v_price := coalesce((it->>'unit_price')::int, prod.sell_price);
       v_cost := prod.buy_price;
-      update products set stock = stock - v_qty where id = prod.id;
+      perform _stock_delta(prod.id, -v_qty);
     end if;
 
     insert into sale_items (sale_id, product_id, name, kind, qty, unit_price, unit_cost, nominal, profit)
@@ -159,11 +179,9 @@ begin
   perform 1 from sales where id = p_id for update;
   if not found then raise exception 'Transaksi tidak ditemukan'; end if;
 
-  update products p set stock = p.stock + s.q
-  from (select product_id, sum(qty) q from sale_items
-        where sale_id = p_id and kind = 'barang' and product_id is not null
-        group by product_id) s
-  where p.id = s.product_id;
+  perform _stock_delta(product_id, qty)
+  from sale_items
+  where sale_id = p_id and kind = 'barang' and product_id is not null;
 
   delete from sale_items where sale_id = p_id;
   update sales set note = p_note where id = p_id;
@@ -197,6 +215,7 @@ language sql stable as $$
 $$;
 
 -- Fungsi hanya boleh dipanggil dari server (service role).
+revoke all on function _stock_delta(uuid, int) from public, anon, authenticated;
 revoke all on function _apply_sale_items(uuid, jsonb) from public, anon, authenticated;
 revoke all on function create_sale(jsonb, text, text, timestamptz) from public, anon, authenticated;
 revoke all on function update_sale(uuid, jsonb, text) from public, anon, authenticated;

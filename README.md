@@ -10,9 +10,9 @@ Aplikasi kasir (POS) ringan untuk toko kecil. Mobile first, SvelteKit + Supabase
 
 ## Varian
 
-Barang yang harganya beda (Es / Hangat, Kecil / Besar) dibuat sebagai barang bernama sama dengan varian berbeda. Tiap varian punya harga beli, untung, dan stok sendiri. Di layar jual, barang bernama sama digabung jadi satu kotak; ketuk untuk memilih varian. Di Telegram cukup bilang "jual 2 kopi es"; kalau hanya "kopi", bot menanyakan variannya.
+Barang yang harganya beda (Es / Hangat, Kecil / Besar) dibuat sebagai barang bernama sama dengan varian berbeda. Tiap varian punya harga beli dan untung sendiri, tetapi stoknya dipakai bersama: jual Kopi Es atau Kopi Hangat sama-sama mengurangi satu stok Kopi. Di layar jual, barang bernama sama digabung jadi satu kotak; ketuk untuk memilih varian. Di Telegram cukup bilang "jual 2 kopi es"; kalau hanya "kopi", bot menanyakan variannya.
 
-**Database yang sudah dibuat sebelumnya:** jalankan ulang seluruh `supabase/schema.sql` di SQL Editor (aman diulang). Ini menambah kolom `variant` dan memperbarui fungsi transaksi.
+**Database yang sudah dibuat sebelumnya:** jalankan ulang seluruh `supabase/schema.sql` di SQL Editor (aman diulang). Ini menambah kolom `variant`, memperbarui fungsi transaksi, dan menyamakan stok varian yang sudah ada (diambil angka terbesar).
 
 ## Aturan saldo e-money
 
