@@ -259,7 +259,7 @@ $$;
 -- Fungsi hanya boleh dipanggil dari server (service role).
 revoke all on function _stock_delta(uuid, int) from public, anon, authenticated;
 revoke all on function _apply_sale_items(uuid, jsonb) from public, anon, authenticated;
-revoke all on function create_sale(jsonb, text, text, timestamptz) from public, anon, authenticated;
+revoke all on function create_sale(jsonb, text, text, timestamptz, boolean) from public, anon, authenticated;
 revoke all on function update_sale(uuid, jsonb, text) from public, anon, authenticated;
 revoke all on function delete_sale(uuid) from public, anon, authenticated;
 revoke all on function daily_stats(date, date) from public, anon, authenticated;
