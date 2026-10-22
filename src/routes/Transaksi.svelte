@@ -22,7 +22,9 @@
 	let cartOpen = $state(false);
 	let saving = $state(false);
 
-	const shown = $derived(data.products.filter((p) => label(p).toLowerCase().includes(q.trim().toLowerCase())));
+	// Barang pendukung (harga jual 0) hanya dipakai untuk stok, tidak dijual langsung
+	const sellable = $derived(data.products.filter((p) => p.kind === 'emoney' || p.sell_price > 0));
+	const shown = $derived(sellable.filter((p) => label(p).toLowerCase().includes(q.trim().toLowerCase())));
 
 	// Barang bernama sama (beda varian, misal Es/Hangat) digabung jadi satu kotak
 	type Tile = { key: string; items: Product[] };
@@ -49,7 +51,7 @@
 	let pick = $state<Tile | null>(null);
 	let pickOpen = $state(false);
 	const totals = $derived(cart.totals(data.emoney));
-	const hasGoods = $derived(data.products.some((p) => p.kind === 'barang'));
+	const hasGoods = $derived(sellable.some((p) => p.kind === 'barang'));
 
 	// E-money
 	let emoneyFor = $state<Product | null>(null);
@@ -138,7 +140,7 @@
 						<span class="text-sm text-emerald-800">Isi saldo, untung dihitung dari uang yang dibayar pembeli</span>
 					{:else}
 						<span class="mt-3">
-							<span class="block text-lg font-semibold {minPrice === 0 ? 'text-zinc-500' : ''}">{minPrice === 0 ? 'Pendukung' : rp(minPrice)}</span>
+							<span class="block text-lg font-semibold">{rp(minPrice)}</span>
 							{#if grouped}
 								<span class="block text-sm {out ? 'font-semibold text-rose-600' : 'text-zinc-500'}">{out ? 'Habis' : `${t.items.length} pilihan, sisa ${p.stock}`}</span>
 							{:else}
