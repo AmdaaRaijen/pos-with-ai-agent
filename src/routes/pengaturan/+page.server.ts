@@ -44,14 +44,7 @@ export const actions: Actions = {
 
 	emoney: async ({ request }) => {
 		const f = await request.formData();
-		const cfg = {
-			block: money(f.get('block')),
-			profit: money(f.get('profit')),
-			admin: money(f.get('admin')),
-			adminMode: f.get('adminMode') === 'block' ? 'block' : 'flat'
-		};
-		if (cfg.block < 1000) return fail(400, { section: 'emoney', error: 'Kelipatan minimal Rp 1.000.' });
-		await setSetting('emoney', cfg);
+		await setSetting('emoney', { admin: money(f.get('admin')) });
 		return { section: 'emoney', ok: 'Aturan saldo tersimpan. Berlaku untuk transaksi berikutnya.' };
 	},
 

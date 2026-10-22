@@ -55,13 +55,15 @@
 	let emoneyFor = $state<Product | null>(null);
 	let emoneyOpen = $state(false);
 	let nominal = $state(0);
+	let paid = $state(0);
 	const quick = [100_000, 200_000, 300_000, 500_000, 1_000_000];
-	const fee = $derived(emoneyFee(nominal, data.emoney));
+	const fee = $derived(emoneyFee(nominal, paid, data.emoney));
 
 	function tap(p: Product) {
 		if (p.kind === 'emoney') {
 			emoneyFor = p;
 			nominal = 0;
+			paid = 0;
 			emoneyOpen = true;
 		} else if (p.stock > 0) {
 			cart.addGoods(p);
@@ -77,8 +79,8 @@
 	}
 
 	function addEmoney() {
-		if (!emoneyFor || nominal <= 0) return;
-		cart.addEmoney(emoneyFor, nominal);
+		if (!emoneyFor || nominal <= 0 || paid < nominal) return;
+		cart.addEmoney(emoneyFor, nominal, paid);
 		emoneyOpen = false;
 		toast('Saldo masuk keranjang');
 	}
@@ -133,7 +135,7 @@
 						{grouped ? p.name : label(p)}
 					</span>
 					{#if p.kind === 'emoney'}
-						<span class="text-sm text-emerald-800">Isi saldo, biaya admin dihitung otomatis</span>
+						<span class="text-sm text-emerald-800">Isi saldo, untung dihitung dari uang yang dibayar pembeli</span>
 					{:else}
 						<span class="mt-3">
 							<span class="block text-lg font-semibold {minPrice === 0 ? 'text-zinc-500' : ''}">{minPrice === 0 ? 'Pendukung' : rp(minPrice)}</span>
@@ -204,9 +206,9 @@
 						<div class="min-w-0 flex-1">
 							<p class="truncate text-base font-semibold">{label(it.product)}</p>
 							{#if it.product.kind === 'emoney'}
-								{@const f = emoneyFee(it.nominal ?? 0, data.emoney)}
-								<p class="text-sm text-zinc-500">Saldo {rp(it.nominal ?? 0)} + admin {rp(f.fee)}</p>
-								<p class="text-sm font-semibold">{rp(f.customerPays)}</p>
+								{@const f = emoneyFee(it.nominal ?? 0, it.paid ?? 0, data.emoney)}
+								<p class="text-sm text-zinc-500">Saldo {rp(it.nominal ?? 0)}, biaya {rp(f.fee)}</p>
+								<p class="text-sm font-semibold">{rp(it.paid ?? 0)}</p>
 							{:else}
 								<p class="text-sm text-zinc-500">{rp(it.product.sell_price)} x {it.qty}</p>
 								<p class="text-sm font-semibold">{rp(it.product.sell_price * it.qty)}</p>
@@ -253,7 +255,7 @@
 		{#each quick as n (n)}
 			<button
 				class="press min-h-12 rounded-2xl border px-4 text-base font-semibold {nominal === n ? 'border-emerald-700 bg-emerald-50 text-emerald-800' : 'border-zinc-200 bg-white'}"
-				onclick={() => (nominal = n)}
+				onclick={() => ((nominal = n), (paid = n + data.emoney.admin))}
 			>
 				{shortRp(n)}
 			</button>
@@ -265,17 +267,22 @@
 		<MoneyInput id="nominal" bind:value={nominal} placeholder="Contoh 250.000" />
 	</div>
 
+	<div class="mt-5">
+		<label class="label" for="paid">Pembeli bayar</label>
+		<MoneyInput id="paid" bind:value={paid} placeholder="Uang yang diterima dari pembeli" />
+	</div>
+
 	<div class="mt-5 rounded-3xl bg-emerald-50 p-4" aria-live="polite">
 		{#if nominal > 0}
-			<p class="text-sm text-emerald-900">Biaya admin ({fee.blocks} kelipatan {shortRp(data.emoney.block)}{data.emoney.adminMode === 'flat' ? ', admin sekali' : ''})</p>
-			<p class="text-2xl font-bold tracking-tight text-emerald-900">{rp(fee.fee)}</p>
-			<p class="mt-2 text-sm text-emerald-900">Pelanggan bayar <span class="font-bold">{rp(fee.customerPays)}</span>, untung toko {rp(fee.profit)}</p>
+			<p class="text-sm text-emerald-900">Biaya admin {rp(fee.admin)} per transaksi</p>
+			<p class="text-2xl font-bold tracking-tight text-emerald-900">Untung {rp(fee.profit)}</p>
+			<p class="mt-2 text-sm text-emerald-900">Biaya yang diterima toko {rp(fee.fee)} (bayar {rp(paid)} dikurangi saldo {rp(nominal)})</p>
 		{:else}
-			<p class="text-sm text-emerald-900">Pilih atau ketik nominal saldo, biaya admin muncul di sini.</p>
+			<p class="text-sm text-emerald-900">Pilih nominal saldo, lalu isi uang yang dibayar pembeli.</p>
 		{/if}
 	</div>
 
-	<button class="btn-primary mt-5 w-full" disabled={nominal <= 0} onclick={addEmoney}>Masukkan ke keranjang</button>
+	<button class="btn-primary mt-5 w-full" disabled={nominal <= 0 || paid < nominal} onclick={addEmoney}>Masukkan ke keranjang</button>
 </Sheet>
 
 <!-- Pilih varian -->

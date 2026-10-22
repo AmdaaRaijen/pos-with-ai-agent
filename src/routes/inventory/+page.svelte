@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { emoneyFee, rp, shortRp } from '#lib/money.ts';
+	import { rp } from '#lib/money.ts';
 	import { toast } from '#lib/toast.svelte.ts';
 	import { label, type Product } from '#lib/types.ts';
 	import Sheet from '#lib/components/Sheet.svelte';
@@ -47,7 +47,6 @@
 	);
 	const multi = $derived(!editing && kind === 'barang');
 	const taken = $derived(new Set(siblings.map((s) => (s.variant ?? '').toLowerCase())));
-	const ruleFee = (n: number) => emoneyFee(n, data.emoney).fee;
 
 	function openForm(p: Product | null, k: 'barang' | 'emoney' = 'barang') {
 		editing = p;
@@ -122,7 +121,7 @@
 							<Wallet size={26} weight="duotone" class="shrink-0 text-emerald-700" />
 							<span class="min-w-0 flex-1">
 								<span class="block text-base font-semibold">{p.name}</span>
-								<span class="block text-sm text-emerald-900">200rb: {shortRp(ruleFee(200_000))}, 220rb: {shortRp(ruleFee(220_000))}</span>
+								<span class="block text-sm text-emerald-900">Isi saldo, admin {rp(data.emoney.admin)}</span>
 							</span>
 							<CaretRight size={18} class="text-emerald-700/60" />
 						</button>
@@ -309,12 +308,8 @@
 			</div>
 		{:else}
 			<div class="rounded-3xl bg-emerald-50 p-4 text-sm text-emerald-900">
-				<p class="font-semibold">Harga jual dihitung otomatis</p>
-				<p class="mt-1">
-					Untung {rp(data.emoney.profit)} tiap kelipatan {rp(data.emoney.block)}, ditambah biaya admin {rp(data.emoney.admin)}
-					{data.emoney.adminMode === 'flat' ? 'sekali per transaksi' : 'tiap kelipatan'}.
-				</p>
-				<p class="mt-2">Contoh: {rp(200_000)} biayanya {rp(ruleFee(200_000))}, {rp(220_000)} biayanya {rp(ruleFee(220_000))}.</p>
+				<p class="font-semibold">Untung diisi saat transaksi</p>
+				<p class="mt-1">Kasir mengisi uang yang dibayar pembeli. Untung = dibayar dikurangi saldo dikurangi admin {rp(data.emoney.admin)}.</p>
 			</div>
 		{/if}
 

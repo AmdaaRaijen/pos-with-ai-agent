@@ -48,7 +48,7 @@ Aturan kerja:
 - Setelah mencatat atau mengubah sesuatu, ulangi hasil singkatnya supaya Ibu yakin sudah benar.
 - Semua tool yang mengubah data (tambah/ubah/hapus barang, catat/ubah/hapus penjualan, catat/hapus pengeluaran) TIDAK langsung dilaksanakan. Tool hanya menyiapkan rencana, lalu sistem meminta persetujuan Ibu. Setelah memanggil tool itu, sampaikan ringkasannya dengan bahasa sederhana dan tanyakan "Lanjut, Bu?". JANGAN bilang sudah selesai sebelum Ibu menjawab ya.
 - Kalau Ibu sudah jelas meminta sesuatu, langsung panggil tool-nya (jangan bertanya dua kali). Kalau ada yang kurang jelas, tanya dulu.
-- Menjual saldo e-money: pakai nama e-money (misal DANA) dan nominal saldonya. Biaya dihitung otomatis oleh sistem. Sebutkan total yang harus dibayar pelanggan (nominal ditambah biaya).
+- Menjual saldo e-money: pakai nama e-money (misal DANA), nominal saldonya, dan uang yang dibayar pembeli (parameter dibayar). Kalau uang yang dibayar belum disebut, tanyakan dulu, jangan menebak. Biaya admin tetap per transaksi, untung dihitung sistem dari selisih uang dibayar dikurangi saldo dan admin.
 - Barang bisa punya varian, misalnya "Kopi - Es" dan "Kopi - Hangat" dengan harga berbeda. Kalau Ibu hanya menyebut "kopi" padahal ada beberapa varian, tanyakan varian yang mana. Isi parameter varian kalau Ibu menyebutnya.
 - Kalau Ibu menyebut "tadi", "kemarin", dll, ubah jadi tanggal yang benar.
 - Untuk saran belanja: jelaskan alasan sederhana (misal "laku sekitar 5 per hari, sisa 2, jadi cukup 0,4 hari") lalu sebut jumlah yang disarankan dibeli.
@@ -67,7 +67,7 @@ type ToolDef = { name: string; description: string; parameters: Record<string, u
 
 const lineItem = {
 	type: 'object',
-	properties: { nama: str, varian: { ...str, description: 'Varian barang, misal Es atau Hangat. Kosongkan kalau tidak ada.' }, jumlah: num, nominal: num },
+	properties: { nama: str, varian: { ...str, description: 'Varian barang, misal Es atau Hangat. Kosongkan kalau tidak ada.' }, jumlah: num, nominal: num, dibayar: { ...num, description: 'Khusus e-money: total uang yang dibayar pembeli (saldo ditambah biaya).' } },
 	required: ['nama']
 };
 
@@ -102,7 +102,7 @@ const tools: ToolDef[] = [
 	},
 	{
 		name: 'catat_penjualan',
-		description: 'Catat penjualan baru dan kurangi stok. Tiap item: nama barang, varian (kalau ada), dan jumlah. Untuk saldo e-money isi nama e-money dan nominal (jumlah diabaikan).',
+		description: 'Catat penjualan baru dan kurangi stok. Tiap item: nama barang, varian (kalau ada), dan jumlah. Untuk saldo e-money isi nama e-money, nominal, dan dibayar (jumlah diabaikan).',
 		parameters: { type: 'object', properties: { items: { type: 'array', items: lineItem }, catatan: str }, required: ['items'] }
 	},
 	{
@@ -193,7 +193,8 @@ async function toLines(items: Args[]): Promise<CartLine[]> {
 		const p = await resolve(it.nama, it.varian);
 		if (p.kind === 'emoney') {
 			if (!(Number(it.nominal) > 0)) throw new Error(`Nominal saldo ${p.name} belum disebut.`);
-			lines.push({ product_id: p.id, qty: 1, nominal: int(it.nominal) });
+			if (int(it.dibayar) < int(it.nominal)) throw new Error(`Uang yang dibayar pembeli untuk ${p.name} belum disebut. Tanyakan dulu.`);
+			lines.push({ product_id: p.id, qty: 1, nominal: int(it.nominal), paid: int(it.dibayar) });
 		} else {
 			const qty = int(it.jumlah ?? 1) || 1;
 			lines.push({ product_id: p.id, qty });
@@ -421,8 +422,10 @@ async function describeLines(items: Args[], checkStock = true) {
 		if (p.kind === 'emoney') {
 			const n = int(it.nominal);
 			if (n <= 0) throw new Error(`Nominal saldo ${p.name} belum disebut.`);
-			const fee = emoneyFee(n, cfg).fee;
-			parts.push(`${p.name} saldo ${rp(n)} (biaya ${rp(fee)})`);
+			const paid = int(it.dibayar);
+			if (paid < n) throw new Error(`Uang yang dibayar pembeli untuk ${p.name} belum disebut. Tanyakan dulu.`);
+			const fee = emoneyFee(n, paid, cfg).fee;
+			parts.push(`${p.name} saldo ${rp(n)} (biaya ${rp(fee)}, untung ${rp(fee - cfg.admin)})`);
 			total += fee;
 			pass += n;
 		} else {

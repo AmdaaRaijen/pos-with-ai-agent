@@ -14,7 +14,7 @@
 
 	let { data }: PageProps = $props();
 
-	type Line = { product_id: string; name: string; kind: string; qty: number; price: number; nominal: number };
+	type Line = { product_id: string; name: string; kind: string; qty: number; price: number; nominal: number; paid: number };
 
 	// Salinan yang bisa diubah dari data transaksi
 	// svelte-ignore state_referenced_locally
@@ -25,7 +25,8 @@
 			kind: i.kind,
 			qty: i.qty,
 			price: i.unit_price,
-			nominal: i.nominal ?? 0
+			nominal: i.nominal ?? 0,
+			paid: (i.nominal ?? 0) + i.unit_price
 		}))
 	);
 	// svelte-ignore state_referenced_locally
@@ -39,16 +40,16 @@
 	function addProduct(p: Product) {
 		const cur = p.kind === 'barang' ? lines.find((l) => l.product_id === p.id) : undefined;
 		if (cur) cur.qty++;
-		else lines.push({ product_id: p.id, name: label(p), kind: p.kind, qty: 1, price: p.sell_price, nominal: 0 });
+		else lines.push({ product_id: p.id, name: label(p), kind: p.kind, qty: 1, price: p.sell_price, nominal: 0, paid: 0 });
 		addOpen = false;
 		confirmSave = false;
 	}
 
 	const payload = $derived(
-		lines.map((l) => (l.kind === 'emoney' ? { product_id: l.product_id, qty: 1, nominal: l.nominal } : { product_id: l.product_id, qty: l.qty, unit_price: l.price }))
+		lines.map((l) => (l.kind === 'emoney' ? { product_id: l.product_id, qty: 1, nominal: l.nominal, paid: l.paid } : { product_id: l.product_id, qty: l.qty, unit_price: l.price }))
 	);
 	const total = $derived(
-		lines.reduce((a, l) => a + (l.kind === 'emoney' ? emoneyFee(l.nominal, data.emoney).fee : l.price * l.qty), 0)
+		lines.reduce((a, l) => a + (l.kind === 'emoney' ? l.paid - l.nominal : l.price * l.qty), 0)
 	);
 	const when = $derived(wibDate(new Date(data.sale.created_at)));
 </script>
@@ -108,7 +109,9 @@
 					<div class="mt-3">
 						<label class="label" for="nom{idx}">Nominal saldo</label>
 						<MoneyInput id="nom{idx}" bind:value={l.nominal} />
-						<p class="mt-2 text-sm text-zinc-500">Biaya admin {rp(emoneyFee(l.nominal, data.emoney).fee)}</p>
+						<label class="label mt-3" for="paid{idx}">Pembeli bayar</label>
+						<MoneyInput id="paid{idx}" bind:value={l.paid} />
+						<p class="mt-2 text-sm text-zinc-500">Untung {rp(emoneyFee(l.nominal, l.paid, data.emoney).profit)} (admin {rp(data.emoney.admin)})</p>
 					</div>
 				{/if}
 			</li>
@@ -137,7 +140,7 @@
 			</div>
 		</div>
 	{:else}
-		<button type="button" class="btn-primary mt-3 w-full" disabled={lines.some((l) => l.kind === 'emoney' && l.nominal <= 0)} onclick={() => (confirmSave = true)}>Simpan perubahan</button>
+		<button type="button" class="btn-primary mt-3 w-full" disabled={lines.some((l) => l.kind === 'emoney' && (l.nominal <= 0 || l.paid < l.nominal))} onclick={() => (confirmSave = true)}>Simpan perubahan</button>
 	{/if}
 </form>
 

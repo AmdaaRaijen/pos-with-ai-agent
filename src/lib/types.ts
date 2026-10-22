@@ -33,7 +33,7 @@ export type Sale = {
 };
 
 /** Baris yang dikirim ke create_sale / update_sale */
-export type CartLine = { product_id: string; qty: number; nominal?: number; unit_price?: number };
+export type CartLine = { product_id: string; qty: number; nominal?: number; paid?: number; unit_price?: number };
 
 export type DayStat = { day: string; total: number; profit: number; trx: number; expense: number };
 export type Expense = { id: string; spent_on: string; name: string; amount: number; source: string };

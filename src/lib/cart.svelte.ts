@@ -1,7 +1,7 @@
 import { emoneyFee, type EmoneyConfig } from './money';
 import type { CartLine, Product } from './types';
 
-export type CartItem = { product: Product; qty: number; nominal?: number };
+export type CartItem = { product: Product; qty: number; nominal?: number; paid?: number };
 
 /** Keranjang transaksi. Disimpan di memori saja, hilang kalau halaman ditutup. */
 class Cart {
@@ -33,8 +33,8 @@ class Cart {
 		else this.items.push({ product: p, qty: 1 });
 	}
 
-	addEmoney(p: Product, nominal: number) {
-		this.items.push({ product: p, qty: 1, nominal });
+	addEmoney(p: Product, nominal: number, paid: number) {
+		this.items.push({ product: p, qty: 1, nominal, paid });
 	}
 
 	change(index: number, delta: number) {
@@ -61,7 +61,7 @@ class Cart {
 		let pass = 0;
 		for (const i of this.items) {
 			if (i.product.kind === 'emoney') {
-				const f = emoneyFee(i.nominal ?? 0, cfg);
+				const f = emoneyFee(i.nominal ?? 0, i.paid ?? 0, cfg);
 				total += f.fee;
 				profit += f.profit;
 				pass += i.nominal ?? 0;
@@ -76,7 +76,7 @@ class Cart {
 	lines(): CartLine[] {
 		return this.items.map((i) =>
 			i.product.kind === 'emoney'
-				? { product_id: i.product.id, qty: 1, nominal: i.nominal }
+				? { product_id: i.product.id, qty: 1, nominal: i.nominal, paid: i.paid }
 				: { product_id: i.product.id, qty: i.qty }
 		);
 	}

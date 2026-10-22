@@ -1,7 +1,7 @@
-/** adminMode: 'flat' = biaya admin sekali per transaksi, 'block' = biaya admin dikali jumlah kelipatan */
-export type EmoneyConfig = { block: number; profit: number; admin: number; adminMode: 'flat' | 'block' };
+/** admin = biaya admin per transaksi, dipotong dari selisih nominal dan uang yang dibayar pembeli */
+export type EmoneyConfig = { admin: number };
 
-export const DEFAULT_EMONEY: EmoneyConfig = { block: 100_000, profit: 3_500, admin: 1_500, adminMode: 'flat' };
+export const DEFAULT_EMONEY: EmoneyConfig = { admin: 1_500 };
 
 const rupiah = new Intl.NumberFormat('id-ID');
 
@@ -17,24 +17,10 @@ export function shortRp(n: number): string {
 	return s + a;
 }
 
-/**
- * Harga jual saldo e-money. Setiap kelipatan `block` (dibulatkan ke atas) dihitung
- * satu kelipatan untung (`profit`). Biaya admin (`admin`) dikenakan sekali per transaksi (flat),
- * atau per kelipatan kalau adminMode = 'block'.
- * 200.000 -> 2 transaksi -> Rp 10.000, 220.000 -> 3 transaksi -> Rp 15.000.
- */
-export function emoneyFee(nominal: number, cfg: EmoneyConfig = DEFAULT_EMONEY) {
-	if (!(nominal > 0)) return { blocks: 0, fee: 0, admin: 0, profit: 0, customerPays: 0 };
-	const blocks = Math.ceil(nominal / cfg.block);
-	const admin = cfg.adminMode === 'block' ? blocks * cfg.admin : cfg.admin;
-	const fee = blocks * cfg.profit + admin;
-	return {
-		blocks,
-		fee,
-		admin,
-		profit: blocks * cfg.profit,
-		customerPays: nominal + fee
-	};
+/** Biaya (pembeli bayar dikurangi nominal) dan untung (biaya dikurangi admin) isi saldo */
+export function emoneyFee(nominal: number, paid: number, cfg: EmoneyConfig = DEFAULT_EMONEY) {
+	const fee = paid - nominal;
+	return { fee, admin: cfg.admin, profit: fee - cfg.admin };
 }
 
 /** Tanggal "YYYY-MM-DD" menurut WIB */

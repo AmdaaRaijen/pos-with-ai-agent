@@ -71,7 +71,7 @@ create table if not exists settings (
 
 insert into settings (key, value) values
   ('store', '{"name": "Toko Saya"}'),
-  ('emoney', '{"block": 100000, "profit": 3500, "admin": 1500, "adminMode": "flat"}'),
+  ('emoney', '{"admin": 1500}'),
   ('telegram_whitelist', '[]')
 on conflict (key) do nothing;
 
@@ -93,7 +93,7 @@ alter table settings enable row level security;
 alter table telegram_links enable row level security;
 
 -- ---------------------------------------------------------------------------
--- Hitung satu baris transaksi dari JSON {product_id, qty, nominal?, unit_price?}
+-- Hitung satu baris transaksi dari JSON {product_id, qty, nominal?, paid?, unit_price?}
 -- lalu simpan ke sale_items dan kurangi stok. Dipakai oleh create/update sale.
 -- ---------------------------------------------------------------------------
 -- Varian satu barang (nama sama) berbagi satu stok: ubah stok semua varian aktif bersamaan.
@@ -119,12 +119,12 @@ declare
   cfg jsonb;
   v_qty int;
   v_nominal int;
-  v_blocks int;
+  v_paid int;
   v_price int;
   v_cost int;
 begin
   select value into cfg from settings where key = 'emoney';
-  cfg := coalesce(cfg, '{"block": 100000, "profit": 3500, "admin": 1500}');
+  cfg := coalesce(cfg, '{"admin": 1500}');
 
   for it in select * from jsonb_array_elements(p_items) loop
     -- kunci semua varian bernama sama supaya stok bersama tidak balapan
@@ -142,13 +142,14 @@ begin
       if v_nominal is null or v_nominal <= 0 then
         raise exception 'Nominal saldo harus diisi';
       end if;
-      v_blocks := ceil(v_nominal::numeric / (cfg->>'block')::int);
+      v_paid := (it->>'paid')::int;
+      if v_paid is null or v_paid < v_nominal then
+        raise exception 'Uang yang dibayar pembeli harus diisi';
+      end if;
       v_qty := 1;
-      -- biaya admin: flat (sekali per transaksi) kecuali adminMode = 'block'
-      v_cost := case when coalesce(cfg->>'adminMode', 'flat') = 'block'
-                     then v_blocks * (cfg->>'admin')::int
-                     else (cfg->>'admin')::int end;
-      v_price := v_blocks * (cfg->>'profit')::int + v_cost;
+      -- biaya admin flat per transaksi (modal), harga = dibayar pembeli dikurangi saldo
+      v_cost := (cfg->>'admin')::int;
+      v_price := v_paid - v_nominal;
     else
       v_qty := (it->>'qty')::int;
       if v_qty is null or v_qty <= 0 then
