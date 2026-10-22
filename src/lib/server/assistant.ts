@@ -22,7 +22,7 @@ import {
 	updateProduct,
 	updateSale
 } from './data';
-import { addDays, dayLabel, emoneyFee, rp, timeLabel, wibDate } from '#lib/money.ts';
+import { addDays, atWib, dayLabel, emoneyFee, isPastOrToday, rp, timeLabel, wibDate } from '#lib/money.ts';
 import { label, type CartLine, type Product, type Sale } from '#lib/types.ts';
 
 export type Turn = { role: 'user' | 'assistant'; content: string };
@@ -51,6 +51,7 @@ Aturan kerja:
 - Menjual saldo e-money: pakai nama e-money (misal DANA), nominal saldonya, dan uang yang dibayar pembeli (parameter dibayar). Kalau uang yang dibayar belum disebut, tanyakan dulu, jangan menebak. Biaya admin tetap per transaksi, untung dihitung sistem dari selisih uang dibayar dikurangi saldo dan admin.
 - Barang bisa punya varian, misalnya "Kopi - Es" dan "Kopi - Hangat" dengan harga berbeda. Kalau Ibu hanya menyebut "kopi" padahal ada beberapa varian, tanyakan varian yang mana. Isi parameter varian kalau Ibu menyebutnya.
 - Kalau Ibu menyebut "tadi", "kemarin", dll, ubah jadi tanggal yang benar.
+- Merekap transaksi yang sudah lewat atau dicatat tanpa mengurangi stok (Ibu bilang "rekap", "catat saja", "tidak usah kurangi stok") pakai rekap_penjualan dengan tanggal. Penjualan biasa yang baru terjadi pakai catat_penjualan.
 - Untuk saran belanja: jelaskan alasan sederhana (misal "laku sekitar 5 per hari, sisa 2, jadi cukup 0,4 hari") lalu sebut jumlah yang disarankan dibeli.
 - Untuk saran isi tas: sebut barang yang paling laku dan paling untung, dan berapa sebaiknya dibawa. Barang yang untungnya besar dan laku boleh diperbanyak.
 - Pengeluaran lain-lain (biaya keamanan, listrik, dan sejenisnya) dicatat dengan tool catat_pengeluaran. Pengeluaran mengurangi untung bersih. Belanja barang dagangan BUKAN pengeluaran lain-lain, itu lewat stok.
@@ -104,6 +105,11 @@ const tools: ToolDef[] = [
 		name: 'catat_penjualan',
 		description: 'Catat penjualan baru dan kurangi stok. Tiap item: nama barang, varian (kalau ada), dan jumlah. Untuk saldo e-money isi nama e-money, nominal, dan dibayar (jumlah diabaikan).',
 		parameters: { type: 'object', properties: { items: { type: 'array', items: lineItem }, catatan: str }, required: ['items'] }
+	},
+	{
+		name: 'rekap_penjualan',
+		description: 'Rekap penjualan yang sudah lewat TANPA mengubah stok. Tanggal YYYY-MM-DD (WIB), kosongkan untuk hari ini. Isi item sama seperti catat_penjualan.',
+		parameters: { type: 'object', properties: { items: { type: 'array', items: lineItem }, tanggal: str, catatan: str }, required: ['items'] }
 	},
 	{
 		name: 'lihat_penjualan',
@@ -203,6 +209,12 @@ async function toLines(items: Args[]): Promise<CartLine[]> {
 	return lines;
 }
 
+function recapDate(v: unknown): string {
+	if (v === undefined || v === null || v === '') return wibDate();
+	if (!isPastOrToday(v)) throw new Error('Tanggal rekap tidak valid atau di masa depan.');
+	return v;
+}
+
 function describeSale(s: Sale) {
 	const customerPays = s.total + s.sale_items.reduce((a, i) => a + (i.nominal ?? 0), 0);
 	return {
@@ -217,6 +229,7 @@ function describeSale(s: Sale) {
 		uang_masuk_toko: rp(s.total),
 		pelanggan_bayar: rp(customerPays),
 		untung: rp(s.profit),
+		...(s.stock_applied ? {} : { rekap_tanpa_ubah_stok: true }),
 		catatan: s.note
 	};
 }
@@ -303,6 +316,12 @@ const run: Record<string, (a: Args) => Promise<unknown>> = {
 
 	async catat_penjualan(a) {
 		const id = await createSale(await toLines(a.items), a.catatan ? String(a.catatan).slice(0, 200) : null, 'telegram');
+		return describeSale((await getSale(id))!);
+	},
+
+	async rekap_penjualan(a) {
+		const tgl = recapDate(a.tanggal);
+		const id = await createSale(await toLines(a.items), a.catatan ? String(a.catatan).slice(0, 200) : null, 'telegram', { at: atWib(tgl), stock: false });
 		return describeSale((await getSale(id))!);
 	},
 
@@ -404,7 +423,7 @@ const run: Record<string, (a: Args) => Promise<unknown>> = {
 
 const WRITE = new Set([
 	'tambah_barang', 'ubah_barang', 'hapus_barang',
-	'catat_penjualan', 'ubah_penjualan', 'hapus_penjualan',
+	'catat_penjualan', 'rekap_penjualan', 'ubah_penjualan', 'hapus_penjualan',
 	'catat_pengeluaran', 'hapus_pengeluaran'
 ]);
 
@@ -477,11 +496,16 @@ const plan: Record<string, (a: Args) => Promise<string>> = {
 		return `Catat penjualan: ${d.text}. Total toko ${rp(d.total)}${d.pay !== d.total ? `, pelanggan bayar ${rp(d.pay)}` : ''}.`;
 	},
 
+	async rekap_penjualan(a) {
+		const d = await describeLines(a.items, false);
+		return `Rekap penjualan tanggal ${recapDate(a.tanggal)}: ${d.text}. Total toko ${rp(d.total)}${d.pay !== d.total ? `, pelanggan bayar ${rp(d.pay)}` : ''}. Stok tidak berubah.`;
+	},
+
 	async ubah_penjualan(a) {
 		const sale = await getSale(String(a.id ?? ''));
 		if (!sale) throw new Error('Penjualan tidak ditemukan.');
 		const d = await describeLines(a.items, false);
-		return `Ubah penjualan ${saleText(sale)} menjadi: ${d.text}. Total baru ${rp(d.total)}. Stok dihitung ulang.`;
+		return `Ubah penjualan ${saleText(sale)} menjadi: ${d.text}. Total baru ${rp(d.total)}.${sale.stock_applied ? " Stok dihitung ulang." : " Ini rekap, stok tidak berubah."}`;
 	},
 
 	async hapus_penjualan(a) {

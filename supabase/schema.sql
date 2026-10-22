@@ -35,6 +35,8 @@ create table if not exists sales (
   note text,
   source text not null default 'web'
 );
+-- false = rekap transaksi lama: tidak mengurangi (dan tidak mengembalikan) stok
+alter table sales add column if not exists stock_applied boolean not null default true;
 create index if not exists sales_created_idx on sales (created_at desc);
 
 create table if not exists sale_items (
@@ -122,7 +124,9 @@ declare
   v_paid int;
   v_price int;
   v_cost int;
+  v_stock boolean;
 begin
+  select stock_applied into v_stock from sales where id = p_sale;
   select value into cfg from settings where key = 'emoney';
   cfg := coalesce(cfg, '{"admin": 1500}');
 
@@ -155,13 +159,13 @@ begin
       if v_qty is null or v_qty <= 0 then
         raise exception 'Jumlah harus lebih dari 0';
       end if;
-      if prod.stock < v_qty then
+      if v_stock and prod.stock < v_qty then
         raise exception 'Stok % tinggal %', prod.name || coalesce(' - ' || nullif(prod.variant, ''), ''), prod.stock;
       end if;
       v_nominal := null;
       v_price := coalesce((it->>'unit_price')::int, prod.sell_price);
       v_cost := prod.buy_price;
-      perform _stock_delta(prod.id, -v_qty);
+      if v_stock then perform _stock_delta(prod.id, -v_qty); end if;
     end if;
 
     insert into sale_items (sale_id, product_id, name, kind, qty, unit_price, unit_cost, nominal, profit)
@@ -174,15 +178,17 @@ begin
   where id = p_sale;
 end $$;
 
+drop function if exists create_sale(jsonb, text, text, timestamptz);
 create or replace function create_sale(p_items jsonb, p_note text default null,
-                                       p_source text default 'web', p_at timestamptz default now())
+                                       p_source text default 'web', p_at timestamptz default now(),
+                                       p_stock boolean default true)
 returns uuid language plpgsql as $$
 declare v_id uuid;
 begin
   if jsonb_array_length(p_items) = 0 then
     raise exception 'Transaksi kosong';
   end if;
-  insert into sales (note, source, created_at) values (p_note, p_source, p_at) returning id into v_id;
+  insert into sales (note, source, created_at, stock_applied) values (p_note, p_source, p_at, p_stock) returning id into v_id;
   perform _apply_sale_items(v_id, p_items);
   return v_id;
 end $$;
@@ -199,7 +205,8 @@ begin
 
   perform _stock_delta(product_id, qty)
   from sale_items
-  where sale_id = p_id and kind = 'barang' and product_id is not null;
+  where sale_id = p_id and kind = 'barang' and product_id is not null
+    and (select stock_applied from sales where id = p_id);
 
   delete from sale_items where sale_id = p_id;
   update sales set note = p_note where id = p_id;
@@ -215,7 +222,8 @@ begin
 
   perform _stock_delta(product_id, qty)
   from sale_items
-  where sale_id = p_id and kind = 'barang' and product_id is not null;
+  where sale_id = p_id and kind = 'barang' and product_id is not null
+    and (select stock_applied from sales where id = p_id);
 
   delete from sales where id = p_id;
 end $$;

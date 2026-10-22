@@ -133,7 +133,7 @@
 	{#if confirmSave}
 		<div class="mt-5 rounded-3xl bg-amber-50 p-4 text-amber-900" role="alert">
 			<p class="flex items-center gap-2 text-base font-semibold"><Warning size={20} weight="bold" /> Simpan perubahan?</p>
-			<p class="mt-1 text-sm">Isi transaksi diganti, stok barang dihitung ulang, dan laporan keuangan ikut berubah.</p>
+			<p class="mt-1 text-sm">{data.sale.stock_applied ? 'Isi transaksi diganti, stok barang dihitung ulang, dan laporan keuangan ikut berubah.' : 'Ini rekap: isi transaksi diganti dan laporan keuangan ikut berubah, stok barang tidak berubah.'}</p>
 			<div class="mt-4 grid grid-cols-2 gap-3">
 				<button type="button" class="btn-soft" onclick={() => (confirmSave = false)}>Periksa lagi</button>
 				<button class="btn-primary" disabled={saving}>{saving ? 'Menyimpan...' : 'Ya, simpan'}</button>

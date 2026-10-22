@@ -2,6 +2,7 @@
 	import { dayLabel, rp, timeLabel, wibDate } from '#lib/money.ts';
 	import TransaksiTabs from '#lib/components/TransaksiTabs.svelte';
 	import CaretRight from 'phosphor-svelte/lib/CaretRight';
+	import NotePencil from 'phosphor-svelte/lib/NotePencil';
 	import ClockCounterClockwise from 'phosphor-svelte/lib/ClockCounterClockwise';
 	import type { riwayat } from '#lib/server/pages.ts';
 
@@ -23,6 +24,8 @@
 </header>
 
 <div class="rise mb-5" style="--i:1"><TransaksiTabs active="riwayat" /></div>
+
+<a href="/riwayat/rekap" class="btn-soft rise mb-5 w-full" style="--i:1"><NotePencil size={20} weight="bold" /> Rekap transaksi</a>
 
 {#if groups.length === 0}
 	<section class="rise rounded-[2rem] border border-dashed border-zinc-300 px-6 py-12 text-center" style="--i:2">
@@ -48,7 +51,7 @@
 										{s.sale_items.map((i) => (i.kind === 'emoney' ? i.name + ' (saldo)' : i.qty > 1 ? `${i.name} x${i.qty}` : i.name)).join(', ')}
 									</p>
 									<p class="text-sm text-zinc-500">
-										{timeLabel(s.created_at)}{s.source === 'telegram' ? ' - dari Telegram' : ''}{s.note ? ` - ${s.note}` : ''}
+										{timeLabel(s.created_at)}{s.source === 'telegram' ? ' - dari Telegram' : ''}{s.stock_applied ? '' : ' - rekap'}{s.note ? ` - ${s.note}` : ''}
 									</p>
 								</div>
 								<div class="text-right">

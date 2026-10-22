@@ -57,3 +57,8 @@ export function normalizePhone(raw: string): string {
 
 /** Periode laporan keuangan dari ?p=, selain pilihan yang ada dianggap 7 hari */
 export const periodOf = (p: string | null): '7' | '30' | 'bulan' => (p === '30' || p === 'bulan' ? p : '7');
+
+/** Waktu simpan untuk transaksi tanggal lampau (jam 12 siang WIB). Hari ini = undefined, pakai jam sekarang. */
+export const atWib = (date: string): string | undefined => (date === wibDate() ? undefined : `${date}T12:00:00+07:00`);
+
+export const isPastOrToday = (date: unknown): date is string => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= wibDate();

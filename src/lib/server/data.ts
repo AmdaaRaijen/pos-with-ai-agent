@@ -103,8 +103,16 @@ export async function getSale(id: string): Promise<Sale | null> {
 	return must(await db().from('sales').select(SALE_COLS).eq('id', id).maybeSingle()) as Sale | null;
 }
 
-export async function createSale(lines: CartLine[], note: string | null, source: 'web' | 'telegram' = 'web'): Promise<string> {
-	return must(await db().rpc('create_sale', { p_items: lines, p_note: note, p_source: source })) as string;
+/** `at` (ISO) untuk transaksi lama, `stock: false` = rekap: stok tidak berubah */
+export async function createSale(
+	lines: CartLine[],
+	note: string | null,
+	source: 'web' | 'telegram' = 'web',
+	opts: { at?: string; stock?: boolean } = {}
+): Promise<string> {
+	return must(
+		await db().rpc('create_sale', { p_items: lines, p_note: note, p_source: source, p_stock: opts.stock ?? true, ...(opts.at ? { p_at: opts.at } : {}) })
+	) as string;
 }
 
 export async function deleteSale(id: string) {

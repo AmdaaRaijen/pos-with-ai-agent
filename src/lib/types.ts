@@ -29,6 +29,7 @@ export type Sale = {
 	profit: number;
 	note: string | null;
 	source: string;
+	stock_applied: boolean;
 	sale_items: SaleItem[];
 };
 
