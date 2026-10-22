@@ -1,22 +1,7 @@
 import { fail } from '@sveltejs/kit';
-import { createExpense, dailyStats, deleteExpense, itemStats, listExpenses, stockAdvice } from '#lib/server/data.ts';
-import { addDays, wibDate } from '#lib/money.ts';
-import type { Actions, PageServerLoad } from './$types';
-
-export const load: PageServerLoad = async ({ url }) => {
-	const today = wibDate();
-	const p = url.searchParams.get('p');
-	const period = p === '30' || p === 'bulan' ? p : '7';
-	const from = period === 'bulan' ? today.slice(0, 8) + '01' : addDays(today, period === '30' ? -29 : -6);
-
-	const [days, items, advice, expenses] = await Promise.all([
-		dailyStats(from, today),
-		itemStats(from, today),
-		stockAdvice(),
-		listExpenses(from, today)
-	]);
-	return { period, from, today, days, expenses, items: items.slice(0, 5), advice: advice.filter((a) => a.buy_qty > 0).slice(0, 5) };
-};
+import { createExpense, deleteExpense } from '#lib/server/data.ts';
+import { wibDate } from '#lib/money.ts';
+import type { Actions } from './$types';
 
 export const actions: Actions = {
 	addExpense: async ({ request }) => {

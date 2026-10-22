@@ -1,36 +1,11 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { aiConfig, DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL } from '#lib/server/assistant.ts';
 import { COOKIE, hashPassword, verifyPassword } from '#lib/server/auth.ts';
 import { db, must } from '#lib/server/db.ts';
-import { getEmoneyConfig, getStoreName, getWhitelist, setSetting } from '#lib/server/data.ts';
+import { getWhitelist, setSetting } from '#lib/server/data.ts';
 import { botInfo, connectWebhook, telegramReady, webhookInfo } from '#lib/server/telegram.ts';
 import { publicOrigin } from '#lib/server/origin.ts';
 import { normalizePhone } from '#lib/money.ts';
-import type { Actions, PageServerLoad } from './$types';
-
-export const load: PageServerLoad = async ({ url, request }) => {
-	const [store, emoney, whitelist, links] = await Promise.all([
-		getStoreName(),
-		getEmoneyConfig(),
-		getWhitelist(),
-		(async () => must(await db().from('telegram_links').select('phone, name')) as { phone: string; name: string | null }[])()
-	]);
-	const [bot, hook, ai] = await Promise.all([botInfo(), webhookInfo(), aiConfig()]);
-	return {
-		store,
-		emoney,
-		whitelist,
-		linked: links,
-		ai: { ...ai, defaultBaseUrl: DEFAULT_AI_BASE_URL, defaultModel: DEFAULT_AI_MODEL },
-		telegram: {
-			configured: telegramReady(),
-			username: bot?.username ?? null,
-			connected: !!hook?.url,
-			error: hook?.last_error_message ?? null,
-			origin: publicOrigin(request, url)
-		}
-	};
-};
+import type { Actions } from './$types';
 
 const money = (v: FormDataEntryValue | null) => Math.max(0, Math.round(Number(v) || 0));
 

@@ -54,3 +54,6 @@ export function normalizePhone(raw: string): string {
 	else if (p.startsWith('8')) p = '62' + p;
 	return p;
 }
+
+/** Periode laporan keuangan dari ?p=, selain pilihan yang ada dianggap 7 hari */
+export const periodOf = (p: string | null): '7' | '30' | 'bulan' => (p === '30' || p === 'bulan' ? p : '7');

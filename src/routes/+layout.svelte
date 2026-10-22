@@ -10,7 +10,13 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
-	<title>{data.storeName} - Kasir</title>
+	{#await data.storeName}
+		<title>Kasir</title>
+	{:then name}
+		<title>{name} - Kasir</title>
+	{:catch}
+		<title>Kasir</title>
+	{/await}
 </svelte:head>
 
 <Toaster />

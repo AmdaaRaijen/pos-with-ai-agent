@@ -1,14 +1,7 @@
 import { fail } from '@sveltejs/kit';
-import { createSale, getEmoneyConfig, listProducts, summary } from '#lib/server/data.ts';
-import { wibDate } from '#lib/money.ts';
+import { createSale } from '#lib/server/data.ts';
 import type { CartLine } from '#lib/types.ts';
-import type { Actions, PageServerLoad } from './$types';
-
-export const load: PageServerLoad = async () => {
-	const today = wibDate();
-	const [products, emoney, sum] = await Promise.all([listProducts(), getEmoneyConfig(), summary(today, today)]);
-	return { products, emoney, today: sum };
-};
+import type { Actions } from './$types';
 
 export const actions: Actions = {
 	save: async ({ request }) => {

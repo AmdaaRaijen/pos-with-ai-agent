@@ -1,11 +1,6 @@
 import { fail } from '@sveltejs/kit';
-import { archiveProduct, createProduct, getEmoneyConfig, listProducts, updateProduct } from '#lib/server/data.ts';
-import type { Actions, PageServerLoad } from './$types';
-
-export const load: PageServerLoad = async () => {
-	const [products, emoney] = await Promise.all([listProducts(), getEmoneyConfig()]);
-	return { products, emoney };
-};
+import { archiveProduct, createProduct, listProducts, updateProduct } from '#lib/server/data.ts';
+import type { Actions } from './$types';
 
 const int = (v: FormDataEntryValue | null) => Math.max(0, Math.round(Number(v) || 0));
 
