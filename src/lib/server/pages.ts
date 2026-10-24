@@ -56,6 +56,7 @@ export async function keuangan(p: string | null, d: string | null) {
 }
 
 export async function riwayat(p: string | null, d: string | null) {
+	p ??= 'sesi'; // default; "14 hari" tetap bisa dipilih lewat ?p=14
 	const today = wibDate();
 	const cfg = await getSessionConfig();
 	if (!isSingle(p)) return { period: '14', cfg, today, date: today as string | null, sales: await listSales(addDays(today, -13), today) };
