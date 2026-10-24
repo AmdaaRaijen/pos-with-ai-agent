@@ -23,6 +23,16 @@ export const actions: Actions = {
 		return { section: 'emoney', ok: 'Aturan saldo tersimpan. Berlaku untuk transaksi berikutnya.' };
 	},
 
+	session: async ({ request }) => {
+		const f = await request.formData();
+		const start = String(f.get('start') ?? '');
+		const end = String(f.get('end') ?? '');
+		const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
+		if (!hhmm.test(start) || !hhmm.test(end) || start === end) return fail(400, { section: 'session', error: 'Jam mulai dan selesai harus diisi dan tidak sama.' });
+		await setSetting('session', { start, end });
+		return { section: 'session', ok: 'Jam sesi tersimpan.' };
+	},
+
 	ai: async ({ request }) => {
 		const f = await request.formData();
 		const base_url = String(f.get('base_url') ?? '').trim().replace(/\/+$/, '');

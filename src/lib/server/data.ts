@@ -1,5 +1,5 @@
 import { db, must } from './db';
-import { addDays, DEFAULT_EMONEY, wibDate, type EmoneyConfig } from '#lib/money.ts';
+import { addDays, currentSessionDate, DEFAULT_EMONEY, DEFAULT_SESSION, isPastOrToday, sessionRange, wibDate, type EmoneyConfig, type SessionConfig } from '#lib/money.ts';
 import { label, type CartLine, type DayStat, type Expense, type ItemStat, type Product, type Sale } from '#lib/types.ts';
 
 /* ---------- Pengaturan ---------- */
@@ -16,6 +16,10 @@ export async function setSetting(key: string, value: unknown) {
 export const getEmoneyConfig = async (): Promise<EmoneyConfig> => ({
 	...DEFAULT_EMONEY,
 	...(await getSetting<Partial<EmoneyConfig>>('emoney', {}))
+});
+export const getSessionConfig = async (): Promise<SessionConfig> => ({
+	...DEFAULT_SESSION,
+	...(await getSetting<Partial<SessionConfig>>('session', {}))
 });
 export const getStoreName = async () => (await getSetting('store', { name: 'Toko Saya' })).name;
 export const getWhitelist = () => getSetting<string[]>('telegram_whitelist', []);
@@ -91,12 +95,22 @@ function dayRange(from: string, to: string) {
 	return { gte: `${from}T00:00:00+07:00`, lt: `${addDays(to, 1)}T00:00:00+07:00` };
 }
 
-export async function listSales(from: string, to: string, limit = 200): Promise<Sale[]> {
-	const r = dayRange(from, to);
+export async function listSalesRange(gte: string, lt: string, limit = 200): Promise<Sale[]> {
 	return must(
-		await db().from('sales').select(SALE_COLS).gte('created_at', r.gte).lt('created_at', r.lt)
+		await db().from('sales').select(SALE_COLS).gte('created_at', gte).lt('created_at', lt)
 			.order('created_at', { ascending: false }).limit(limit)
 	) as Sale[];
+}
+
+export function listSales(from: string, to: string, limit = 200): Promise<Sale[]> {
+	const r = dayRange(from, to);
+	return listSalesRange(r.gte, r.lt, limit);
+}
+
+/** Rentang waktu untuk filter satu tanggal / satu sesi. Tanggal kosong atau di masa depan = hari ini / sesi berjalan. */
+export function singleRange(mode: 'tanggal' | 'sesi', d: string | null, cfg: SessionConfig) {
+	const date = isPastOrToday(d) ? d : mode === 'sesi' ? currentSessionDate(cfg) : wibDate();
+	return { date, ...(mode === 'sesi' ? sessionRange(date, cfg) : dayRange(date, date)) };
 }
 
 export async function getSale(id: string): Promise<Sale | null> {
@@ -133,6 +147,32 @@ export async function dailyStats(from: string, to: string): Promise<DayStat[]> {
 export async function itemStats(from: string, to: string): Promise<ItemStat[]> {
 	const rows = must(await db().rpc('item_stats', { p_from: from, p_to: to })) as ItemStat[];
 	return rows.map((r) => ({ ...r, qty: +r.qty, total: +r.total, profit: +r.profit }));
+}
+
+/** Seperti dailyStats + itemStats + listExpenses, tapi untuk satu rentang waktu (satu DayStat). */
+export async function rangeStats(gte: string, lt: string, date: string) {
+	const [sales, expenses] = await Promise.all([listSalesRange(gte, lt, 1000), listExpenses(date, date)]);
+	const byItem = new Map<string, ItemStat>();
+	for (const i of sales.flatMap((s) => s.sale_items)) {
+		const k = `${i.product_id}|${i.name}|${i.kind}`;
+		const a = byItem.get(k) ?? { product_id: i.product_id, name: i.name, kind: i.kind, qty: 0, total: 0, profit: 0 };
+		a.qty += i.qty;
+		a.total += i.unit_price * i.qty;
+		a.profit += i.profit;
+		byItem.set(k, a);
+	}
+	return {
+		// shortcut: pengeluaran hanya punya tanggal, jadi masuk ke sesi yang mulai di tanggal itu; upgrade kalau pengeluaran perlu jam
+		days: [{
+			day: date,
+			total: sales.reduce((a, s) => a + s.total, 0),
+			profit: sales.reduce((a, s) => a + s.profit, 0),
+			trx: sales.length,
+			expense: expenses.reduce((a, e) => a + e.amount, 0)
+		}] as DayStat[],
+		items: [...byItem.values()].sort((a, b) => b.profit - a.profit),
+		expenses
+	};
 }
 
 export async function summary(from: string, to: string) {

@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { dayLabel, rp, timeLabel, wibDate } from '#lib/money.ts';
+	import { dayLabel, rp, sessionOfSale, sessionRange, timeLabel, wibDate } from '#lib/money.ts';
 	import TransaksiTabs from '#lib/components/TransaksiTabs.svelte';
+	import PeriodFilter from '#lib/components/PeriodFilter.svelte';
 	import CaretRight from 'phosphor-svelte/lib/CaretRight';
 	import NotePencil from 'phosphor-svelte/lib/NotePencil';
 	import ClockCounterClockwise from 'phosphor-svelte/lib/ClockCounterClockwise';
@@ -8,10 +9,19 @@
 
 	let { data }: { data: Awaited<ReturnType<typeof riwayat>> } = $props();
 
+	const tabs = [
+		{ id: '14', label: '14 hari' },
+		{ id: 'tanggal', label: 'Tanggal' },
+		{ id: 'sesi', label: 'Sesi' }
+	];
+	const total = $derived(data.sales.reduce((a, s) => a + s.total, 0));
+	const profit = $derived(data.sales.reduce((a, s) => a + s.profit, 0));
+
 	const groups = $derived.by(() => {
 		const map = new Map<string, typeof data.sales>();
 		for (const s of data.sales) {
-			const d = wibDate(new Date(s.created_at));
+			const d = data.period === 'sesi' ? sessionOfSale(s.created_at, data.cfg) : wibDate(new Date(s.created_at));
+			if (!d) continue;
 			map.set(d, [...(map.get(d) ?? []), s]);
 		}
 		return [...map.entries()];
@@ -20,10 +30,23 @@
 
 <header class="rise mb-5">
 	<h1 class="text-2xl font-semibold tracking-tight">Transaksi</h1>
-	<p class="mt-1 text-sm text-zinc-500">14 hari terakhir. Ketuk untuk melihat atau mengubah.</p>
+	<p class="mt-1 text-sm text-zinc-500">Ketuk transaksi untuk melihat atau mengubah.</p>
 </header>
 
 <div class="rise mb-5" style="--i:1"><TransaksiTabs active="riwayat" /></div>
+
+<div class="rise mb-5" style="--i:1"><PeriodFilter {tabs} active={data.period} date={data.date} max={data.today} cfg={data.cfg} /></div>
+
+<section class="rise mb-5 grid grid-cols-2 gap-3" style="--i:1">
+	<div class="rounded-3xl bg-zinc-100 p-4">
+		<p class="text-sm text-zinc-500">Pemasukan ({data.sales.length} transaksi)</p>
+		<p class="mt-1 text-lg font-semibold">{rp(total)}</p>
+	</div>
+	<div class="rounded-3xl bg-zinc-100 p-4">
+		<p class="text-sm text-zinc-500">Keuntungan</p>
+		<p class="mt-1 text-lg font-semibold {profit < 0 ? 'text-rose-700' : 'text-emerald-700'}">{rp(profit)}</p>
+	</div>
+</section>
 
 <a href="/riwayat/rekap" class="btn-soft rise mb-5 w-full" style="--i:1"><NotePencil size={20} weight="bold" /> Rekap transaksi</a>
 
@@ -31,7 +54,7 @@
 	<section class="rise rounded-[2rem] border border-dashed border-zinc-300 px-6 py-12 text-center" style="--i:2">
 		<ClockCounterClockwise size={44} class="mx-auto text-zinc-400" />
 		<h2 class="mt-4 text-lg font-semibold">Belum ada transaksi</h2>
-		<p class="mx-auto mt-1 max-w-[30ch] text-sm text-zinc-500">Transaksi yang sudah disimpan akan muncul di sini.</p>
+		<p class="mx-auto mt-1 max-w-[30ch] text-sm text-zinc-500">Tidak ada transaksi di rentang ini.</p>
 		<a href="/" class="btn-primary mt-6">Mulai jual</a>
 	</section>
 {:else}
@@ -39,8 +62,8 @@
 		{#each groups as [day, list], gi (day)}
 			<section class="rise" style="--i:{Math.min(gi, 6) + 2}">
 				<div class="mb-2 flex items-baseline justify-between px-1">
-					<h2 class="text-sm font-semibold text-zinc-600">{day === wibDate() ? 'Hari ini' : dayLabel(day)}</h2>
-					<span class="text-sm text-zinc-500">{rp(list.reduce((a, s) => a + s.total, 0))}</span>
+					<h2 class="text-sm font-semibold text-zinc-600">{data.period === 'sesi' ? `${dayLabel(day, false)} ${data.cfg.start} - ${dayLabel(sessionRange(day, data.cfg).endDate, false)} ${data.cfg.end}` : day === wibDate() ? 'Hari ini' : dayLabel(day)}</h2>
+					<span class="text-sm text-zinc-500">{rp(list.reduce((a, s) => a + s.total, 0))} <span class="font-medium text-emerald-700">(+{rp(list.reduce((a, s) => a + s.profit, 0))})</span></span>
 				</div>
 				<ul class="divide-y divide-zinc-100 overflow-hidden rounded-3xl border border-zinc-200/70 bg-white shadow-lift">
 					{#each list as s (s.id)}

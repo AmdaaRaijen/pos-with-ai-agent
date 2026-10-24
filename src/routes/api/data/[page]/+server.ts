@@ -8,8 +8,8 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 	switch (params.page) {
 		case 'transaksi': data = await pages.transaksi(); break;
 		case 'inventory': data = await pages.inventory(); break;
-		case 'keuangan': data = await pages.keuangan(url.searchParams.get('p')); break;
-		case 'riwayat': data = await pages.riwayat(); break;
+		case 'keuangan': data = await pages.keuangan(url.searchParams.get('p'), url.searchParams.get('d')); break;
+		case 'riwayat': data = await pages.riwayat(url.searchParams.get('p'), url.searchParams.get('d')); break;
 		case 'sale': data = await pages.sale(url.searchParams.get('id') ?? ''); break;
 		case 'pengaturan': data = await pages.pengaturan(url, request); break;
 		default: error(404);

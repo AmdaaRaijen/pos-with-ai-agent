@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { enhance } from '$app/forms';
 	import { dayLabel, rp } from '#lib/money.ts';
 	import { toast } from '#lib/toast.svelte.ts';
 	import Sheet from '#lib/components/Sheet.svelte';
 	import MoneyInput from '#lib/components/MoneyInput.svelte';
+	import PeriodFilter from '#lib/components/PeriodFilter.svelte';
 	import TrendChart from '#lib/components/TrendChart.svelte';
 	import ChartLineUp from 'phosphor-svelte/lib/ChartLineUp';
 	import Receipt from 'phosphor-svelte/lib/Receipt';
@@ -34,8 +34,11 @@
 	const periods = [
 		{ id: '7', label: '7 hari' },
 		{ id: '30', label: '30 hari' },
-		{ id: 'bulan', label: 'Bulan ini' }
+		{ id: 'bulan', label: 'Bulan ini' },
+		{ id: 'tanggal', label: 'Tanggal' },
+		{ id: 'sesi', label: 'Sesi' }
 	];
+	const single = $derived(data.period === 'tanggal' || data.period === 'sesi');
 
 	const sum = $derived({
 		total: data.days.reduce((a, d) => a + d.total, 0),
@@ -52,19 +55,10 @@
 
 <header class="rise mb-5">
 	<h1 class="text-2xl font-semibold tracking-tight">Keuangan</h1>
-	<p class="mt-1 text-sm text-zinc-500">{dayLabel(data.from, false)} sampai {dayLabel(data.today, false)}</p>
+	<p class="mt-1 text-sm text-zinc-500">{single ? dayLabel(data.date) : `${dayLabel(data.from, false)} sampai ${dayLabel(data.today, false)}`}</p>
 </header>
 
-<div class="rise mb-5 grid grid-cols-3 gap-1 rounded-2xl bg-zinc-200/60 p-1 text-sm font-semibold" style="--i:1" role="tablist">
-	{#each periods as p (p.id)}
-		<button
-			role="tab"
-			aria-selected={data.period === p.id}
-			class="press rounded-xl py-2.5 {data.period === p.id ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500'}"
-			onclick={() => goto(`?p=${p.id}`, { reset: false })}>{p.label}</button
-		>
-	{/each}
-</div>
+<div class="rise mb-5" style="--i:1"><PeriodFilter tabs={periods} active={data.period} date={data.date} max={data.today} cfg={data.cfg} /></div>
 
 {#if sum.trx === 0 && data.expenses.length === 0}
 	<section class="rise rounded-[2rem] border border-dashed border-zinc-300 px-6 py-12 text-center" style="--i:2">
@@ -85,6 +79,7 @@
 		</p>
 	</section>
 
+	{#if !single}
 	<section class="rise mt-6 rounded-[2rem] border border-zinc-200/70 bg-white p-4 shadow-lift" style="--i:3">
 		<div class="mb-3 flex items-center justify-between gap-2">
 			<h2 class="text-base font-semibold">Tren per hari</h2>
@@ -108,6 +103,7 @@
 			<p class="text-sm text-emerald-700">{best ? rp(best.profit - best.expense) : ''}</p>
 		</div>
 	</section>
+	{/if}
 
 	{#if data.items.length}
 		<section class="rise mt-8" style="--i:5">

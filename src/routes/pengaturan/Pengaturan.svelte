@@ -64,6 +64,25 @@
 		</form>
 	</section>
 
+	<!-- Sesi jualan -->
+	<section class="rise" style="--i:2">
+		<h2 class="mb-1 px-1 text-base font-semibold">Sesi jualan</h2>
+		<p class="mb-3 px-1 text-sm text-zinc-500">Dipakai untuk filter per sesi di Transaksi dan Keuangan. Jam selesai lebih awal dari jam mulai berarti sesi lewat tengah malam.</p>
+		<form method="POST" action="?/session" use:enhance={submit('session')} class="flex flex-col gap-4 rounded-[2rem] border border-zinc-200/70 bg-white p-5 shadow-lift">
+			<div class="grid grid-cols-2 gap-3">
+				<div>
+					<label class="label" for="sstart">Mulai</label>
+					<input class="field" id="sstart" name="start" type="time" value={data.session.start} required />
+				</div>
+				<div>
+					<label class="label" for="send">Selesai</label>
+					<input class="field" id="send" name="end" type="time" value={data.session.end} required />
+				</div>
+			</div>
+			<button class="btn-primary" disabled={busy === 'session'}>Simpan sesi</button>
+		</form>
+	</section>
+
 	<!-- Telegram -->
 	<section class="rise" style="--i:3">
 		<h2 class="mb-1 flex items-center gap-2 px-1 text-base font-semibold"><TelegramLogo size={22} weight="fill" class="text-sky-600" /> Asisten Telegram</h2>

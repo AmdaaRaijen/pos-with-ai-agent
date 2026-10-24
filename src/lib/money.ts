@@ -55,8 +55,36 @@ export function normalizePhone(raw: string): string {
 	return p;
 }
 
+/** Filter satu tanggal (00:00-24:00) atau satu sesi jualan */
+export const isSingle = (p: string | null): p is 'tanggal' | 'sesi' => p === 'tanggal' || p === 'sesi';
+
 /** Periode laporan keuangan dari ?p=, selain pilihan yang ada dianggap 7 hari */
-export const periodOf = (p: string | null): '7' | '30' | 'bulan' => (p === '30' || p === 'bulan' ? p : '7');
+export const periodOf = (p: string | null): '7' | '30' | 'bulan' | 'tanggal' | 'sesi' => (p === '30' || p === 'bulan' || isSingle(p) ? p : '7');
+
+/** Jam sesi jualan (WIB, "HH:MM"). Kalau selesai <= mulai, sesi lewat tengah malam. Sesi dinamai menurut tanggal mulainya. */
+export type SessionConfig = { start: string; end: string };
+
+export const DEFAULT_SESSION: SessionConfig = { start: '18:00', end: '06:00' };
+
+export function sessionRange(date: string, c: SessionConfig) {
+	const endDate = c.end <= c.start ? addDays(date, 1) : date;
+	return { gte: `${date}T${c.start}:00+07:00`, lt: `${endDate}T${c.end}:00+07:00`, endDate };
+}
+
+/** Tanggal mulai sesi tempat waktu `iso` berada, null kalau di luar jam sesi */
+export function sessionOfSale(iso: string, c: SessionConfig): string | null {
+	const w = new Date(new Date(iso).getTime() + 7 * 3_600_000).toISOString();
+	const date = w.slice(0, 10);
+	const t = w.slice(11, 16);
+	if (c.end > c.start) return t >= c.start && t < c.end ? date : null;
+	return t >= c.start ? date : t < c.end ? addDays(date, -1) : null;
+}
+
+/** Tanggal mulai sesi yang sedang berjalan (atau yang terakhir selesai) */
+export function currentSessionDate(c: SessionConfig, now: Date = new Date()): string {
+	const time = new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(11, 16);
+	return c.end <= c.start && time < c.end ? addDays(wibDate(now), -1) : wibDate(now);
+}
 
 /** Waktu simpan untuk transaksi tanggal lampau (jam 12 siang WIB). Hari ini = undefined, pakai jam sekarang. */
 export const atWib = (date: string): string | undefined => (date === wibDate() ? undefined : `${date}T12:00:00+07:00`);

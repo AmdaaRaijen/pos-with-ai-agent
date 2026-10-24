@@ -7,7 +7,7 @@
 	let { data }: PageProps = $props();
 </script>
 
-<Stream promise={data.main} key={data.period}>
+<Stream promise={data.main} key={data.key}>
 	{#snippet skeleton()}
 		<div class="mb-5"><h1 class="text-2xl font-semibold tracking-tight">Keuangan</h1></div>
 		<Skel class="mb-5 h-12" />
